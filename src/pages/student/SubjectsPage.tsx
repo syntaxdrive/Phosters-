@@ -1,28 +1,210 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { EmptyState } from '../../components/ui/States';
+import { ArrowRight, Settings2 } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
+import {
+  fetchLessonCountsByExamSubject,
+  fetchStudentEnrollments,
+} from '../../services/learningService';
+import type { StudentEnrolledExam } from '../../types/learning';
+import { Card } from '../../components/ui/Card';
+import { EmptyState, ErrorState, LoadingState } from '../../components/ui/States';
 
 export function SubjectsPage() {
+  const { user } = useAuth();
+
+  const [enrollments, setEnrollments] = useState<StudentEnrolledExam[]>([]);
+  const [lessonCounts, setLessonCounts] = useState<Map<string, number>>(new Map());
+  const [selectedExamSlug, setSelectedExamSlug] = useState<string>('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadSubjects = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    setError(null);
+
+    const enrollRes = await fetchStudentEnrollments(user.id);
+    if (enrollRes.error) {
+      setError(enrollRes.error);
+      setLoading(false);
+      return;
+    }
+
+    const loaded = enrollRes.enrollments;
+    const examIds = Array.from(new Set(loaded.map((e) => e.exam.id)));
+    const subjectIds = Array.from(
+      new Set(loaded.flatMap((e) => e.selectedSubjects.map((s) => s.id)))
+    );
+    const countsRes = await fetchLessonCountsByExamSubject(examIds, subjectIds);
+
+    setEnrollments(loaded);
+    setLessonCounts(countsRes.counts);
+    setLoading(false);
+  }, [user]);
+
+  useEffect(() => {
+    void loadSubjects();
+  }, [loadSubjects]);
+
+  if (loading) {
+    return <LoadingState message="Loading your subjects..." />;
+  }
+
+  if (error) {
+    return <ErrorState message={error} onRetry={() => void loadSubjects()} />;
+  }
+
+  if (enrollments.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Subjects</h1>
+          <p className="text-sm text-slate-600">
+            Select your examination profile to access your subjects and lessons.
+          </p>
+        </div>
+
+        <EmptyState
+          title="No examination selected yet"
+          description="Choose JAMB UTME, UI Post-UTME, or both and pick your subjects so Phosters can show your lessons."
+          action={
+            <Link
+              to="/app/setup-exams"
+              className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg bg-phosters-600 text-white text-sm font-semibold hover:bg-phosters-700 transition-colors"
+            >
+              Choose Examinations &amp; Subjects
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
+  const visibleEnrollments =
+    selectedExamSlug === 'all'
+      ? enrollments
+      : enrollments.filter((e) => e.exam.slug === selectedExamSlug);
+
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Subjects</h1>
-        <p className="text-sm text-slate-600">
-          JAMB UTME and UI Post-UTME subject browsing and lessons.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Subjects</h1>
+          <p className="text-sm text-slate-600">
+            Open a subject to browse topics and video lessons.
+          </p>
+        </div>
+
+        <Link
+          to="/app/setup-exams"
+          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors self-start sm:self-auto"
+        >
+          <Settings2 className="h-4 w-4 text-phosters-700" aria-hidden="true" />
+          <span>Edit Subjects</span>
+        </Link>
       </div>
 
-      <EmptyState
-        title="Subject selection arrives in Phase 2"
-        description="Once the Phase 1 authentication and profile foundation is verified, Phase 2 will enable examination selection, separate JAMB UTME and UI Post-UTME subject combinations, and lesson browsing."
-        action={
-          <Link
-            to="/app"
-            className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
+      {enrollments.length > 1 && (
+        <div
+          role="tablist"
+          aria-label="Filter subjects by examination"
+          className="inline-flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={selectedExamSlug === 'all'}
+            onClick={() => setSelectedExamSlug('all')}
+            className={[
+              'min-h-[40px] px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap',
+              selectedExamSlug === 'all'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900',
+            ].join(' ')}
           >
-            Back to Home
-          </Link>
-        }
-      />
+            All Examinations
+          </button>
+          {enrollments.map((e) => (
+            <button
+              key={e.exam.id}
+              type="button"
+              role="tab"
+              aria-selected={selectedExamSlug === e.exam.slug}
+              onClick={() => setSelectedExamSlug(e.exam.slug)}
+              className={[
+                'min-h-[40px] px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap',
+                selectedExamSlug === e.exam.slug
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900',
+              ].join(' ')}
+            >
+              {e.exam.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-8">
+        {visibleEnrollments.map((enrollment) => (
+          <section key={enrollment.profileId} className="space-y-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-lg font-bold text-slate-900">{enrollment.exam.name}</h2>
+              {enrollment.intendedCourse && (
+                <span className="text-xs text-slate-500">
+                  Intended course: {enrollment.intendedCourse}
+                </span>
+              )}
+            </div>
+
+            {enrollment.selectedSubjects.length === 0 ? (
+              <Card padding="md">
+                <p className="text-sm text-slate-600">
+                  No subjects selected for {enrollment.exam.name}.{' '}
+                  <Link
+                    to="/app/setup-exams"
+                    className="font-semibold text-phosters-700 hover:underline"
+                  >
+                    Add subjects
+                  </Link>
+                </p>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {enrollment.selectedSubjects.map((subject) => {
+                  const count =
+                    lessonCounts.get(`${enrollment.exam.id}:${subject.id}`) ?? 0;
+                  return (
+                    <Link
+                      key={`${enrollment.exam.id}-${subject.id}`}
+                      to={`/app/subjects/${enrollment.exam.slug}/${subject.slug}`}
+                      className="group block bg-white border border-slate-200 rounded-xl p-5 hover:border-phosters-600 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-phosters-600"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <h3 className="text-base font-bold text-slate-900 group-hover:text-phosters-700 transition-colors">
+                          {subject.name}
+                        </h3>
+                        <ArrowRight
+                          className="h-4 w-4 text-slate-400 group-hover:text-phosters-700 shrink-0 mt-1"
+                          aria-hidden="true"
+                        />
+                      </div>
+                      {subject.description && (
+                        <p className="mt-1.5 text-sm text-slate-600 line-clamp-2">
+                          {subject.description}
+                        </p>
+                      )}
+                      <p className="mt-3 text-xs font-medium text-slate-500 tabular-nums">
+                        {count === 1 ? '1 published lesson' : `${count} published lessons`}
+                      </p>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        ))}
+      </div>
     </div>
   );
 }

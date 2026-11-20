@@ -32,8 +32,17 @@ const ResetPasswordPage = lazy(() =>
 const HomePage = lazy(() =>
   import('./pages/student/HomePage').then((m) => ({ default: m.HomePage }))
 );
+const ExamSetupPage = lazy(() =>
+  import('./pages/student/ExamSetupPage').then((m) => ({ default: m.ExamSetupPage }))
+);
 const SubjectsPage = lazy(() =>
   import('./pages/student/SubjectsPage').then((m) => ({ default: m.SubjectsPage }))
+);
+const SubjectDetailPage = lazy(() =>
+  import('./pages/student/SubjectDetailPage').then((m) => ({ default: m.SubjectDetailPage }))
+);
+const LessonPage = lazy(() =>
+  import('./pages/student/LessonPage').then((m) => ({ default: m.LessonPage }))
 );
 const ResultsPage = lazy(() =>
   import('./pages/student/ResultsPage').then((m) => ({ default: m.ResultsPage }))
@@ -64,7 +73,10 @@ export default function App() {
 
               <Route element={<ProtectedRoute />}>
                 <Route path="/app" element={<HomePage />} />
+                <Route path="/app/setup-exams" element={<ExamSetupPage />} />
                 <Route path="/app/subjects" element={<SubjectsPage />} />
+                <Route path="/app/subjects/:examSlug/:subjectSlug" element={<SubjectDetailPage />} />
+                <Route path="/app/lessons/:lessonId" element={<LessonPage />} />
                 <Route path="/app/results" element={<ResultsPage />} />
                 <Route path="/app/profile" element={<ProfilePage />} />
 

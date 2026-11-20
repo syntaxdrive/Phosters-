@@ -2,15 +2,16 @@
 
 Mobile-first online tutorial platform for Nigerian students preparing for **JAMB UTME** and **University of Ibadan (UI) Post-UTME**.
 
-## Current Build Status: Phase 1 — Foundation
+## Current Build Status: Phase 2 — Student Learning Experience
 
-Implemented in Phase 1:
+Implemented across Phase 1 & Phase 2:
 - React + TypeScript + Vite + Tailwind CSS v4 design system (Phosters green, crisp neutral surfaces, 44px+ mobile touch targets)
 - Responsive `AppShell` with desktop navigation and mobile bottom tab bar
-- Route guards (`ProtectedRoute`, `AdminRoute`) with lazy-loaded pages
-- Safe Supabase client initialization with clear setup guidance when credentials are missing
-- Authentication flows: Sign Up, Sign In, Password Reset request & update, Sign Out
-- Profile creation trigger, permitted personal field editing, and database-enforced role protection (`student` / `admin`)
+- Authentication flows (Sign Up, Sign In, Password Reset, Sign Out) & Profile management
+- Examination profile setup supporting JAMB UTME (English + 3 subjects) and UI Post-UTME independently
+- Student dashboard with Continue Learning card and subject overview
+- Subject → Topic → Lesson browsing restricted to enrolled subjects & published content
+- Lesson page with sticky mobile 16:9 YouTube player (`youtube-nocookie.com`), validated direct material links (`raw.githubusercontent.com`), completion tracking, and previous/next lesson navigation
 
 ---
 
@@ -32,15 +33,10 @@ VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_OR_PUBLISHABLE_KEY
 
 Never place the Supabase `service_role` key in `.env` or any `VITE_*` variable.
 
-### 3. Run the Phase 1 Database Migration
-1. Open **SQL Editor** in your Supabase Dashboard.
-2. Paste and run the contents of `supabase/migrations/001_phase1_profiles_and_auth.sql`.
-   This creates:
-   - `public.profiles` linked to `auth.users`
-   - `handle_new_user()` trigger that assigns `'student'` on signup
-   - `guard_profile_role_update()` trigger blocking self-escalation
-   - Row Level Security (RLS) policies for student and admin reads/updates
-   - `public.promote_user_to_admin(target_email)` helper (restricted to SQL Editor / database owner)
+### 3. Run the Database Migrations
+In your Supabase **SQL Editor**, run the migration scripts in order:
+1. `supabase/migrations/001_phase1_profiles_and_auth.sql` — creates `public.profiles`, signup trigger, role-escalation protection, and RLS.
+2. `supabase/migrations/002_phase2_learning_schema.sql` — creates `exams`, `subjects`, `exam_subjects`, `student_exam_profiles`, `student_exam_subjects`, `topics`, `lessons`, `lesson_materials`, `lesson_links`, `student_lesson_progress`, RLS policies, and seeds JAMB UTME / UI Post-UTME subjects.
 
 ### 4. Configure Supabase Auth URLs
 In **Authentication -> URL Configuration**:

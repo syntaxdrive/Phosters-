@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { validateFullName, validateOptionalPhone } from '../../lib/validation';
@@ -143,6 +143,21 @@ export function ProfilePage() {
             </Button>
           </div>
         </form>
+      </Card>
+
+      <Card padding="md" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">Examinations &amp; subjects</h2>
+          <p className="text-sm text-slate-600">
+            Update your JAMB UTME or UI Post-UTME subject combinations.
+          </p>
+        </div>
+        <Link
+          to="/app/setup-exams"
+          className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors whitespace-nowrap shrink-0"
+        >
+          Manage Exams
+        </Link>
       </Card>
 
       <Card padding="md" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
