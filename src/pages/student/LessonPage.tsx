@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  CheckSquare,
   Circle,
   ExternalLink,
   FileDown,
@@ -14,8 +15,9 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { accessMaterialFile, isSafeExternalHttpUrl, validateMaterialUrl } from '../../lib/materialLinks';
 import { getSafeYouTubeEmbedUrl } from '../../lib/youtube';
+import { fetchPublishedTestsForLesson } from '../../services/cbtService';
 import { fetchLessonDetail, setLessonCompletion } from '../../services/learningService';
-import type { MaterialFileType } from '../../types/database';
+import type { MaterialFileType, Test } from '../../types/database';
 import type { LessonDetailData } from '../../types/learning';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
@@ -34,6 +36,7 @@ export function LessonPage() {
   const { user } = useAuth();
 
   const [detail, setDetail] = useState<LessonDetailData | null>(null);
+  const [attachedTests, setAttachedTests] = useState<Test[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,7 +61,13 @@ export function LessonPage() {
       return;
     }
 
+    const testsRes = await fetchPublishedTestsForLesson(
+      res.data.lesson.id,
+      res.data.topic.id
+    );
+
     setDetail(res.data);
+    setAttachedTests(testsRes.tests);
     setLoading(false);
   }, [user, lessonId]);
 
@@ -351,6 +360,42 @@ export function LessonPage() {
               </a>
             ))}
           </Card>
+        </section>
+      )}
+
+      {/* Attached Practice Tests */}
+      {attachedTests.length > 0 && (
+        <section aria-labelledby="tests-heading" className="space-y-3">
+          <h2 id="tests-heading" className="text-base font-bold text-slate-900">
+            Practice tests
+          </h2>
+          <div className="space-y-2.5">
+            {attachedTests.map((tst) => (
+              <Card
+                key={tst.id}
+                padding="md"
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-phosters-200 bg-phosters-50/40"
+              >
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="h-9 w-9 rounded-lg bg-phosters-100 text-phosters-700 flex items-center justify-center shrink-0">
+                    <CheckSquare className="h-4 w-4" aria-hidden="true" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-slate-900">{tst.title}</p>
+                    {tst.description && (
+                      <p className="mt-0.5 text-xs text-slate-600">{tst.description}</p>
+                    )}
+                  </div>
+                </div>
+                <Link
+                  to={`/app/tests/${tst.id}`}
+                  className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg bg-phosters-600 text-white text-sm font-semibold hover:bg-phosters-700 transition-colors whitespace-nowrap shrink-0 self-start sm:self-auto"
+                >
+                  Take Test
+                </Link>
+              </Card>
+            ))}
+          </div>
         </section>
       )}
 

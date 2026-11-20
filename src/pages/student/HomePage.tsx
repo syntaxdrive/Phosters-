@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, BookOpen, PlayCircle, Settings2, Shield } from 'lucide-react';
+import { ArrowRight, BookOpen, ChevronRight, PlayCircle, Settings2, Shield } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { fetchStudentAttempts } from '../../services/cbtService';
 import {
   fetchLessonCountsByExamSubject,
   fetchRecentLesson,
   fetchStudentEnrollments,
 } from '../../services/learningService';
+import type { StudentAttemptSummary } from '../../types/cbt';
 import type { RecentLessonItem, StudentEnrolledExam } from '../../types/learning';
 import { Card } from '../../components/ui/Card';
 import { ErrorState, LoadingState } from '../../components/ui/States';
@@ -17,6 +19,7 @@ export function HomePage() {
 
   const [enrollments, setEnrollments] = useState<StudentEnrolledExam[]>([]);
   const [recentLesson, setRecentLesson] = useState<RecentLessonItem | null>(null);
+  const [recentAttempts, setRecentAttempts] = useState<StudentAttemptSummary[]>([]);
   const [lessonCounts, setLessonCounts] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,9 +29,10 @@ export function HomePage() {
     setLoading(true);
     setError(null);
 
-    const [enrollRes, recentRes] = await Promise.all([
+    const [enrollRes, recentRes, attemptsRes] = await Promise.all([
       fetchStudentEnrollments(user.id),
       fetchRecentLesson(user.id),
+      fetchStudentAttempts(user.id, 3),
     ]);
 
     if (enrollRes.error) {
@@ -47,6 +51,7 @@ export function HomePage() {
 
     setEnrollments(loadedEnrollments);
     setRecentLesson(recentRes.recentLesson);
+    setRecentAttempts(attemptsRes.attempts);
     setLessonCounts(countsRes.counts);
     setLoading(false);
   }, [user]);
@@ -217,6 +222,50 @@ export function HomePage() {
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {recentAttempts.length > 0 && (
+        <section aria-labelledby="recent-results-heading" className="space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <h2 id="recent-results-heading" className="text-lg font-bold text-slate-900">
+              Recent test results
+            </h2>
+            <Link
+              to="/app/results"
+              className="text-sm font-semibold text-phosters-700 hover:text-phosters-800 hover:underline py-1"
+            >
+              All results
+            </Link>
+          </div>
+
+          <Card padding="none" className="overflow-hidden">
+            <ul className="divide-y divide-slate-100">
+              {recentAttempts.map((attempt) => (
+                <li key={attempt.id}>
+                  <Link
+                    to={`/app/results/${attempt.id}`}
+                    className="flex items-center justify-between gap-4 px-5 py-3.5 min-h-[56px] hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 truncate">
+                        {attempt.test_title}
+                      </p>
+                      <p className="text-xs text-slate-500 tabular-nums">
+                        Score {attempt.score} / {attempt.total_points}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-sm font-bold text-phosters-700 tabular-nums">
+                        {Math.round(attempt.percentage)}%
+                      </span>
+                      <ChevronRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
         </section>
       )}
 

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, ChevronRight, PlayCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, CheckSquare, ChevronRight, PlayCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { fetchPublishedTopicTests } from '../../services/cbtService';
 import { fetchSubjectTopicsAndLessons } from '../../services/learningService';
-import type { Exam, Subject } from '../../types/database';
+import type { Exam, Subject, Test } from '../../types/database';
 import type { TopicWithLessons } from '../../types/learning';
 import { Card } from '../../components/ui/Card';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/States';
@@ -15,6 +16,7 @@ export function SubjectDetailPage() {
   const [exam, setExam] = useState<Exam | null>(null);
   const [subject, setSubject] = useState<Subject | null>(null);
   const [topics, setTopics] = useState<TopicWithLessons[]>([]);
+  const [testsByTopic, setTestsByTopic] = useState<Map<string, Test[]>>(new Map());
   const [hasAccess, setHasAccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,9 +33,13 @@ export function SubjectDetailPage() {
       return;
     }
 
+    const topicIds = res.topics.map((t) => t.id);
+    const testsRes = await fetchPublishedTopicTests(topicIds);
+
     setExam(res.exam);
     setSubject(res.subject);
     setTopics(res.topics);
+    setTestsByTopic(testsRes.testsByTopic);
     setHasAccess(res.hasAccess);
     setLoading(false);
   }, [user, examSlug, subjectSlug]);
@@ -144,7 +150,7 @@ export function SubjectDetailPage() {
                 )}
               </div>
 
-              {topic.lessons.length === 0 ? (
+              {topic.lessons.length === 0 && (testsByTopic.get(topic.id)?.length ?? 0) === 0 ? (
                 <div className="px-5 py-4 text-sm text-slate-500">
                   No published lessons in this topic yet.
                 </div>
@@ -198,6 +204,33 @@ export function SubjectDetailPage() {
                         </div>
                         <ChevronRight
                           className="h-4 w-4 text-slate-400 shrink-0"
+                          aria-hidden="true"
+                        />
+                      </Link>
+                    </li>
+                  ))}
+                  {(testsByTopic.get(topic.id) ?? []).map((tst) => (
+                    <li key={tst.id} className="bg-phosters-50/40">
+                      <Link
+                        to={`/app/tests/${tst.id}`}
+                        className="flex items-center justify-between gap-4 px-5 py-3.5 min-h-[56px] hover:bg-phosters-50 transition-colors"
+                      >
+                        <div className="flex items-start gap-3 min-w-0">
+                          <CheckSquare
+                            className="h-5 w-5 text-phosters-700 shrink-0 mt-0.5"
+                            aria-hidden="true"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-900">
+                              {tst.title}
+                            </p>
+                            <p className="mt-0.5 text-xs text-phosters-700 font-medium">
+                              Topic practice test
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronRight
+                          className="h-4 w-4 text-phosters-700 shrink-0"
                           aria-hidden="true"
                         />
                       </Link>

@@ -47,11 +47,38 @@ const LessonPage = lazy(() =>
 const ResultsPage = lazy(() =>
   import('./pages/student/ResultsPage').then((m) => ({ default: m.ResultsPage }))
 );
+const TestTakePage = lazy(() =>
+  import('./pages/student/TestTakePage').then((m) => ({ default: m.TestTakePage }))
+);
+const TestResultDetailPage = lazy(() =>
+  import('./pages/student/TestResultDetailPage').then((m) => ({ default: m.TestResultDetailPage }))
+);
 const ProfilePage = lazy(() =>
   import('./pages/student/ProfilePage').then((m) => ({ default: m.ProfilePage }))
 );
 const AdminDashboardPage = lazy(() =>
   import('./pages/admin/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage }))
+);
+const AdminExamsPage = lazy(() =>
+  import('./pages/admin/AdminExamsPage').then((m) => ({ default: m.AdminExamsPage }))
+);
+const AdminSubjectsPage = lazy(() =>
+  import('./pages/admin/AdminSubjectsPage').then((m) => ({ default: m.AdminSubjectsPage }))
+);
+const AdminTopicsPage = lazy(() =>
+  import('./pages/admin/AdminTopicsPage').then((m) => ({ default: m.AdminTopicsPage }))
+);
+const AdminLessonsPage = lazy(() =>
+  import('./pages/admin/AdminLessonsPage').then((m) => ({ default: m.AdminLessonsPage }))
+);
+const AdminLessonEditorPage = lazy(() =>
+  import('./pages/admin/AdminLessonEditorPage').then((m) => ({ default: m.AdminLessonEditorPage }))
+);
+const AdminTestsPage = lazy(() =>
+  import('./pages/admin/AdminTestsPage').then((m) => ({ default: m.AdminTestsPage }))
+);
+const AdminTestEditorPage = lazy(() =>
+  import('./pages/admin/AdminTestEditorPage').then((m) => ({ default: m.AdminTestEditorPage }))
 );
 const NotFoundPage = lazy(() =>
   import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage }))
@@ -77,11 +104,20 @@ export default function App() {
                 <Route path="/app/subjects" element={<SubjectsPage />} />
                 <Route path="/app/subjects/:examSlug/:subjectSlug" element={<SubjectDetailPage />} />
                 <Route path="/app/lessons/:lessonId" element={<LessonPage />} />
+                <Route path="/app/tests/:testId" element={<TestTakePage />} />
                 <Route path="/app/results" element={<ResultsPage />} />
+                <Route path="/app/results/:attemptId" element={<TestResultDetailPage />} />
                 <Route path="/app/profile" element={<ProfilePage />} />
 
                 <Route element={<AdminRoute />}>
                   <Route path="/admin" element={<AdminDashboardPage />} />
+                  <Route path="/admin/examinations" element={<AdminExamsPage />} />
+                  <Route path="/admin/subjects" element={<AdminSubjectsPage />} />
+                  <Route path="/admin/topics" element={<AdminTopicsPage />} />
+                  <Route path="/admin/lessons" element={<AdminLessonsPage />} />
+                  <Route path="/admin/lessons/:lessonId" element={<AdminLessonEditorPage />} />
+                  <Route path="/admin/tests" element={<AdminTestsPage />} />
+                  <Route path="/admin/tests/:testId" element={<AdminTestEditorPage />} />
                 </Route>
               </Route>
 

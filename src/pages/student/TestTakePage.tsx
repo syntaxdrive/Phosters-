@@ -1,0 +1,226 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, CheckCircle2 } from 'lucide-react';
+import {
+  fetchTestForTaking,
+  submitStudentTestAttempt,
+} from '../../services/cbtService';
+import type { StudentTestPayload } from '../../types/cbt';
+import { Alert } from '../../components/ui/Alert';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
+import { ErrorState, LoadingState } from '../../components/ui/States';
+
+export function TestTakePage() {
+  const { testId = '' } = useParams();
+  const navigate = useNavigate();
+
+  const [payload, setPayload] = useState<StudentTestPayload | null>(null);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [confirmUnanswered, setConfirmUnanswered] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const loadTest = useCallback(async () => {
+    if (!testId) return;
+    setLoading(true);
+    setError(null);
+    const res = await fetchTestForTaking(testId);
+    if (res.error || !res.payload) {
+      setError(res.error || 'Could not load test.');
+      setLoading(false);
+      return;
+    }
+    setPayload(res.payload);
+    setLoading(false);
+  }, [testId]);
+
+  useEffect(() => {
+    void loadTest();
+  }, [loadTest]);
+
+  function selectOption(questionId: string, optionId: string) {
+    setConfirmUnanswered(false);
+    setSubmitError(null);
+    setAnswers((prev) => ({ ...prev, [questionId]: optionId }));
+  }
+
+  async function executeSubmit() {
+    if (!payload) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    const res = await submitStudentTestAttempt(payload.test.id, answers);
+    setSubmitting(false);
+
+    if (res.error || !res.attemptId) {
+      setSubmitError(res.error || 'Failed to submit test. Please try again.');
+      return;
+    }
+
+    navigate(`/app/results/${res.attemptId}`, { replace: true });
+  }
+
+  function handleSubmitClick() {
+    if (!payload) return;
+    const unansweredCount = payload.questions.filter((q) => !answers[q.id]).length;
+    if (unansweredCount > 0 && !confirmUnanswered) {
+      setConfirmUnanswered(true);
+      return;
+    }
+    void executeSubmit();
+  }
+
+  if (loading) return <LoadingState message="Loading test questions..." />;
+  if (error || !payload) {
+    return (
+      <div className="space-y-4">
+        <ErrorState
+          title="Test unavailable"
+          message={error || 'This test could not be opened.'}
+          onRetry={() => void loadTest()}
+        />
+        <div className="flex justify-center">
+          <Link to="/app/subjects" className="text-sm font-semibold text-phosters-700 hover:underline">
+            Back to Subjects
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const { test, questions } = payload;
+  const answeredCount = questions.filter((q) => Boolean(answers[q.id])).length;
+  const unansweredCount = questions.length - answeredCount;
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-6">
+      <div className="space-y-2">
+        <Link
+          to={test.lesson_id ? `/app/lessons/${test.lesson_id}` : '/app/subjects'}
+          className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 hover:text-slate-900"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          <span>{test.lesson_id ? 'Back to Lesson' : 'Back to Subjects'}</span>
+        </Link>
+
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+              {test.title}
+            </h1>
+            {test.description && (
+              <p className="text-sm text-slate-600 leading-relaxed">{test.description}</p>
+            )}
+          </div>
+          <p className="text-sm font-medium text-slate-600 tabular-nums shrink-0">
+            Answered {answeredCount} of {questions.length}
+          </p>
+        </div>
+      </div>
+
+      {questions.length === 0 ? (
+        <Card padding="lg">
+          <p className="text-sm text-slate-600">
+            This test does not have any questions yet.
+          </p>
+        </Card>
+      ) : (
+        <div className="space-y-5">
+          {questions.map((question, index) => {
+            const selectedOptionId = answers[question.id];
+            return (
+              <Card key={question.id} padding="lg" className="space-y-4">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-xs font-semibold text-phosters-700 tabular-nums">
+                    Question {index + 1} of {questions.length}
+                  </span>
+                  <span className="text-xs text-slate-500 tabular-nums">
+                    {question.points} {question.points === 1 ? 'mark' : 'marks'}
+                  </span>
+                </div>
+
+                <p className="text-base font-semibold text-slate-900 leading-relaxed whitespace-pre-line">
+                  {question.question_text}
+                </p>
+
+                <div role="radiogroup" aria-label={`Question ${index + 1}`} className="space-y-2.5">
+                  {question.options.map((opt) => {
+                    const isSelected = selectedOptionId === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        onClick={() => selectOption(question.id, opt.id)}
+                        className={[
+                          'w-full flex items-center justify-between gap-3 min-h-[52px] px-4 py-3 rounded-xl border text-left transition-colors cursor-pointer',
+                          isSelected
+                            ? 'bg-phosters-50 border-phosters-600 text-slate-900'
+                            : 'bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50',
+                        ].join(' ')}
+                      >
+                        <div className="flex items-start gap-3 min-w-0">
+                          <span
+                            className={[
+                              'inline-flex items-center justify-center h-7 w-7 rounded-md text-xs font-mono font-semibold shrink-0',
+                              isSelected
+                                ? 'bg-phosters-600 text-white'
+                                : 'bg-slate-100 text-slate-700',
+                            ].join(' ')}
+                          >
+                            {opt.option_key}
+                          </span>
+                          <span className="text-sm sm:text-base leading-snug pt-0.5">
+                            {opt.option_text}
+                          </span>
+                        </div>
+                        {isSelected && (
+                          <CheckCircle2
+                            className="h-5 w-5 text-phosters-600 shrink-0"
+                            aria-hidden="true"
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Card>
+            );
+          })}
+
+          {submitError && <Alert tone="error">{submitError}</Alert>}
+
+          {confirmUnanswered && (
+            <Alert tone="warning" title="Unanswered questions remaining">
+              You have {unansweredCount} unanswered{' '}
+              {unansweredCount === 1 ? 'question' : 'questions'}. Tap{' '}
+              <strong>Submit Test Anyway</strong> below to grade your current answers.
+            </Alert>
+          )}
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+            <p className="text-sm text-slate-600 tabular-nums">
+              {answeredCount} / {questions.length} answered
+            </p>
+            <div className="flex gap-3">
+              {confirmUnanswered && (
+                <Button
+                  variant="secondary"
+                  onClick={() => setConfirmUnanswered(false)}
+                >
+                  Keep Answering
+                </Button>
+              )}
+              <Button size="lg" onClick={handleSubmitClick} loading={submitting}>
+                {confirmUnanswered ? 'Submit Test Anyway' : 'Submit Test'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

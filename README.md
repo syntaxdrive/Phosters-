@@ -2,16 +2,18 @@
 
 Mobile-first online tutorial platform for Nigerian students preparing for **JAMB UTME** and **University of Ibadan (UI) Post-UTME**.
 
-## Current Build Status: Phase 2 — Student Learning Experience
+## Current Build Status: Phase 4 — Integrated CBT Engine
 
-Implemented across Phase 1 & Phase 2:
+Implemented across Phases 1–4:
 - React + TypeScript + Vite + Tailwind CSS v4 design system (Phosters green, crisp neutral surfaces, 44px+ mobile touch targets)
 - Responsive `AppShell` with desktop navigation and mobile bottom tab bar
 - Authentication flows (Sign Up, Sign In, Password Reset, Sign Out) & Profile management
 - Examination profile setup supporting JAMB UTME (English + 3 subjects) and UI Post-UTME independently
-- Student dashboard with Continue Learning card and subject overview
+- Student dashboard with Continue Learning card, subject overview, and recent test results
 - Subject → Topic → Lesson browsing restricted to enrolled subjects & published content
-- Lesson page with sticky mobile 16:9 YouTube player (`youtube-nocookie.com`), validated direct material links (`raw.githubusercontent.com`), completion tracking, and previous/next lesson navigation
+- Lesson page with sticky mobile 16:9 YouTube player (`youtube-nocookie.com`), validated direct material links (`raw.githubusercontent.com`), completion tracking, attached tests, and previous/next lesson navigation
+- Protected Admin Dashboard (`/admin`) for Examinations, Exam Subject Options, Subjects, Topics, Lessons, Materials, Links, and CBT Tests
+- Integrated CBT Engine with server-authoritative PostgreSQL grading (`submit_test_attempt`), hidden answer keys before submission, score & percentage summaries, and gated answer review
 
 ---
 
@@ -37,6 +39,7 @@ Never place the Supabase `service_role` key in `.env` or any `VITE_*` variable.
 In your Supabase **SQL Editor**, run the migration scripts in order:
 1. `supabase/migrations/001_phase1_profiles_and_auth.sql` — creates `public.profiles`, signup trigger, role-escalation protection, and RLS.
 2. `supabase/migrations/002_phase2_learning_schema.sql` — creates `exams`, `subjects`, `exam_subjects`, `student_exam_profiles`, `student_exam_subjects`, `topics`, `lessons`, `lesson_materials`, `lesson_links`, `student_lesson_progress`, RLS policies, and seeds JAMB UTME / UI Post-UTME subjects.
+3. `supabase/migrations/003_phase4_cbt_schema.sql` — creates `tests`, `questions`, `question_options`, `test_attempts`, `attempt_answers`, strict answer-key hiding RLS, and secure grading/review RPCs.
 
 ### 4. Configure Supabase Auth URLs
 In **Authentication -> URL Configuration**:

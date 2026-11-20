@@ -108,6 +108,56 @@ export type StudentLessonProgress = {
   last_opened_at: string;
 };
 
+export type Test = {
+  id: string;
+  title: string;
+  description: string | null;
+  topic_id: string | null;
+  lesson_id: string | null;
+  is_published: boolean;
+  show_explanations_after_submission: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Question = {
+  id: string;
+  test_id: string;
+  question_text: string;
+  explanation: string | null;
+  display_order: number;
+  points: number;
+};
+
+export type QuestionOption = {
+  id: string;
+  question_id: string;
+  option_text: string;
+  option_key: string;
+  is_correct: boolean;
+  display_order: number;
+};
+
+export type TestAttempt = {
+  id: string;
+  test_id: string;
+  student_id: string;
+  score: number;
+  total_points: number;
+  percentage: number;
+  submitted_at: string;
+  created_at: string;
+};
+
+export type AttemptAnswer = {
+  id: string;
+  attempt_id: string;
+  question_id: string;
+  selected_option_id: string | null;
+  is_correct: boolean;
+  points_awarded: number;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -317,6 +367,102 @@ export type Database = {
         };
         Relationships: [];
       };
+      tests: {
+        Row: Test;
+        Insert: {
+          id?: string;
+          title: string;
+          description?: string | null;
+          topic_id?: string | null;
+          lesson_id?: string | null;
+          is_published?: boolean;
+          show_explanations_after_submission?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          description?: string | null;
+          topic_id?: string | null;
+          lesson_id?: string | null;
+          is_published?: boolean;
+          show_explanations_after_submission?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      questions: {
+        Row: Question;
+        Insert: {
+          id?: string;
+          test_id: string;
+          question_text: string;
+          explanation?: string | null;
+          display_order?: number;
+          points?: number;
+        };
+        Update: {
+          question_text?: string;
+          explanation?: string | null;
+          display_order?: number;
+          points?: number;
+        };
+        Relationships: [];
+      };
+      question_options: {
+        Row: QuestionOption;
+        Insert: {
+          id?: string;
+          question_id: string;
+          option_text: string;
+          option_key: string;
+          is_correct?: boolean;
+          display_order?: number;
+        };
+        Update: {
+          option_text?: string;
+          option_key?: string;
+          is_correct?: boolean;
+          display_order?: number;
+        };
+        Relationships: [];
+      };
+      test_attempts: {
+        Row: TestAttempt;
+        Insert: {
+          id?: string;
+          test_id: string;
+          student_id: string;
+          score?: number;
+          total_points?: number;
+          percentage?: number;
+          submitted_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          score?: number;
+          total_points?: number;
+          percentage?: number;
+        };
+        Relationships: [];
+      };
+      attempt_answers: {
+        Row: AttemptAnswer;
+        Insert: {
+          id?: string;
+          attempt_id: string;
+          question_id: string;
+          selected_option_id?: string | null;
+          is_correct?: boolean;
+          points_awarded?: number;
+        };
+        Update: {
+          selected_option_id?: string | null;
+          is_correct?: boolean;
+          points_awarded?: number;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -332,6 +478,31 @@ export type Database = {
           p_subject_id: string;
         };
         Returns: boolean;
+      };
+      student_can_access_test: {
+        Args: {
+          p_test_id: string;
+        };
+        Returns: boolean;
+      };
+      get_published_test_for_student: {
+        Args: {
+          p_test_id: string;
+        };
+        Returns: unknown;
+      };
+      submit_test_attempt: {
+        Args: {
+          p_test_id: string;
+          p_answers: Record<string, string>;
+        };
+        Returns: string;
+      };
+      get_test_attempt_review: {
+        Args: {
+          p_attempt_id: string;
+        };
+        Returns: unknown;
       };
     };
     Enums: {
