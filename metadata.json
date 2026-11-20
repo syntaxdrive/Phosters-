@@ -1,0 +1,8 @@
+{
+  "name": "Phosters",
+  "description": "Mobile-first tutorial platform for Nigerian students preparing for JAMB UTME and University of Ibadan (UI) Post-UTME.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
