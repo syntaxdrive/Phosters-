@@ -28,6 +28,9 @@ const LegalDocumentPage = lazy(() =>
 const ShareLandingPage = lazy(() =>
   import('./pages/ShareLandingPage').then((m) => ({ default: m.ShareLandingPage }))
 );
+const MinistriesPage = lazy(() =>
+  import('./pages/MinistriesPage').then((m) => ({ default: m.MinistriesPage }))
+);
 const LoginPage = lazy(() =>
   import('./pages/auth/LoginPage').then((m) => ({ default: m.LoginPage }))
 );
@@ -125,6 +128,8 @@ export default function App() {
             <Suspense fallback={<LoadingState message="Loading page..." />}>
               <Routes>
                 <Route path="/" element={<LandingPage />} />
+                <Route path="/ministries" element={<MinistriesPage />} />
+                <Route path="/church" element={<MinistriesPage />} />
                 <Route path="/setup" element={<SetupPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/legal" element={<LegalDocumentPage />} />

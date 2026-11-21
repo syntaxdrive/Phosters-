@@ -54,6 +54,8 @@ export function AppShell({ children }: AppShellProps) {
 
   const isAuthenticated = Boolean(user);
   const isAdmin = profile?.role === 'admin';
+  const isChurchSite =
+    location.pathname === '/ministries' || location.pathname === '/church';
   const isSettingsActive =
     location.pathname === '/settings' || location.pathname.startsWith('/legal');
 
@@ -78,6 +80,10 @@ export function AppShell({ children }: AppShellProps) {
     await signOut();
     setSigningOut(false);
     navigate('/login');
+  }
+
+  if (isChurchSite) {
+    return <>{children}</>;
   }
 
   return (
@@ -563,6 +569,11 @@ export function AppShell({ children }: AppShellProps) {
                   <li>
                     <Link to="/settings" className="hover:text-phosters-700 dark:hover:text-phosters-400 transition-colors">
                       App Settings &amp; Dark Mode
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/ministries" className="hover:text-phosters-700 dark:hover:text-phosters-400 transition-colors">
+                      The Phosters Ministries
                     </Link>
                   </li>
                 </ul>
