@@ -222,6 +222,8 @@ export function AdminLessonEditorPage() {
     : null;
   const ytInvalid = Boolean(youtubeUrl.trim()) && !safeEmbedPreview;
 
+  const selectedTopic = topics.find((t) => t.id === topicId);
+
   return (
     <div className="max-w-4xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -238,17 +240,27 @@ export function AdminLessonEditorPage() {
           </h1>
         </div>
 
-        {isEditing && lessonId && isPublished && (
+        {isEditing && lessonId && (
           <Link
             to={`/app/lessons/${lessonId}`}
             className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
           >
-            View in Student Portal
+            {isPublished ? 'View in Student Portal' : 'Preview Lesson'}
           </Link>
         )}
       </div>
 
       <AdminNav />
+
+      {selectedTopic && !selectedTopic.is_published && (
+        <Alert tone="info" title="Parent topic is currently a draft">
+          Students will not see lessons inside &ldquo;{selectedTopic.title}&rdquo; until that topic is published under{' '}
+          <Link to="/admin/topics" className="font-semibold underline">
+            Admin Topics
+          </Link>
+          .
+        </Alert>
+      )}
 
       {formError && <Alert tone="error">{formError}</Alert>}
       {saveSuccess && <Alert tone="success">{saveSuccess}</Alert>}

@@ -567,7 +567,8 @@ export async function fetchSubjectTopicsAndLessons(
 
 export async function fetchLessonDetail(
   studentId: string,
-  lessonId: string
+  lessonId: string,
+  options?: { allowDrafts?: boolean }
 ): Promise<{
   data: LessonDetailData | null;
   error: string | null;
@@ -576,14 +577,20 @@ export async function fetchLessonDetail(
     return { data: null, error: 'Supabase is not configured.' };
   }
 
-  const lessonRes = await supabase
+  const allowDrafts = Boolean(options?.allowDrafts);
+
+  let lessonQuery = supabase
     .from('lessons')
     .select(
       'id, topic_id, title, short_description, description, tutor_name, youtube_url, display_order, is_published, created_at, updated_at'
     )
-    .eq('id', lessonId)
-    .eq('is_published', true)
-    .maybeSingle();
+    .eq('id', lessonId);
+
+  if (!allowDrafts) {
+    lessonQuery = lessonQuery.eq('is_published', true);
+  }
+
+  const lessonRes = await lessonQuery.maybeSingle();
 
   if (lessonRes.error) {
     return { data: null, error: mapDatabaseError(lessonRes.error) };
@@ -597,21 +604,38 @@ export async function fetchLessonDetail(
     };
   }
 
-  const topicRes = await supabase
+  let topicQuery = supabase
     .from('topics')
     .select('id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at')
-    .eq('id', lesson.topic_id)
-    .eq('is_published', true)
-    .maybeSingle();
+    .eq('id', lesson.topic_id);
+
+  if (!allowDrafts) {
+    topicQuery = topicQuery.eq('is_published', true);
+  }
+
+  const topicRes = await topicQuery.maybeSingle();
 
   if (topicRes.error || !topicRes.data) {
     return {
       data: null,
-      error: topicRes.error ? mapDatabaseError(topicRes.error) : 'Topic not found.',
+      error: topicRes.error
+        ? mapDatabaseError(topicRes.error)
+        : 'This lesson is currently unavailable or its parent topic has not been published yet.',
     };
   }
 
   const topic = topicRes.data as Topic;
+
+  let subjectTopicsQuery = supabase
+    .from('topics')
+    .select('id, title, display_order')
+    .eq('exam_id', topic.exam_id)
+    .eq('subject_id', topic.subject_id)
+    .order('display_order', { ascending: true });
+
+  if (!allowDrafts) {
+    subjectTopicsQuery = subjectTopicsQuery.eq('is_published', true);
+  }
 
   const [examRes, subjectRes, materialsRes, linksRes, subjectTopicsRes, progressRes] =
     await Promise.all([
@@ -619,12 +643,12 @@ export async function fetchLessonDetail(
         .from('exams')
         .select('id, name, slug, description, is_active, created_at')
         .eq('id', topic.exam_id)
-        .single(),
+        .maybeSingle(),
       supabase
         .from('subjects')
         .select('id, name, slug, description, is_active, created_at')
         .eq('id', topic.subject_id)
-        .single(),
+        .maybeSingle(),
       supabase
         .from('lesson_materials')
         .select('id, lesson_id, title, file_type, file_url, display_order, created_at')
@@ -635,13 +659,7 @@ export async function fetchLessonDetail(
         .select('id, lesson_id, title, url, display_order')
         .eq('lesson_id', lesson.id)
         .order('display_order', { ascending: true }),
-      supabase
-        .from('topics')
-        .select('id, title, display_order')
-        .eq('exam_id', topic.exam_id)
-        .eq('subject_id', topic.subject_id)
-        .eq('is_published', true)
-        .order('display_order', { ascending: true }),
+      subjectTopicsQuery,
       supabase
         .from('student_lesson_progress')
         .select('id, is_completed')
@@ -650,7 +668,7 @@ export async function fetchLessonDetail(
         .maybeSingle(),
     ]);
 
-  if (examRes.error || subjectRes.error) {
+  if (examRes.error || !examRes.data || subjectRes.error || !subjectRes.data) {
     return { data: null, error: 'Unable to load examination or subject details.' };
   }
 
@@ -667,7 +685,7 @@ export async function fetchLessonDetail(
       { onConflict: 'student_id,lesson_id' }
     );
 
-  // Build ordered sequence across all published topics/lessons for Previous/Next & Related
+  // Build ordered sequence across topics/lessons for Previous/Next & Related
   const orderedTopics = (subjectTopicsRes.data ?? []) as Array<{
     id: string;
     title: string;
@@ -680,13 +698,18 @@ export async function fetchLessonDetail(
   const relatedLessons: LessonDetailData['relatedLessons'] = [];
 
   if (allTopicIds.length > 0) {
+    let allLessonsQuery = supabase
+      .from('lessons')
+      .select('id, topic_id, title, short_description, display_order')
+      .in('topic_id', allTopicIds)
+      .order('display_order', { ascending: true });
+
+    if (!allowDrafts) {
+      allLessonsQuery = allLessonsQuery.eq('is_published', true);
+    }
+
     const [allLessonsRes, allProgressRes] = await Promise.all([
-      supabase
-        .from('lessons')
-        .select('id, topic_id, title, short_description, display_order')
-        .in('topic_id', allTopicIds)
-        .eq('is_published', true)
-        .order('display_order', { ascending: true }),
+      allLessonsQuery,
       supabase
         .from('student_lesson_progress')
         .select('lesson_id, is_completed')

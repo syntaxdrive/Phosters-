@@ -68,7 +68,7 @@ export function AdminDashboardPage() {
             { label: 'Topics', value: counts.topicsCount, to: '/admin/topics' },
             { label: 'Published Lessons', value: counts.publishedLessonsCount, to: '/admin/lessons' },
             { label: 'Draft Lessons', value: counts.draftLessonsCount, to: '/admin/lessons' },
-            { label: 'Students', value: counts.studentsCount, to: '/admin' },
+            { label: 'Students', value: counts.studentsCount, to: '/admin/students' },
           ].map((item) => (
             <Link
               key={item.label}
@@ -113,6 +113,13 @@ export function AdminDashboardPage() {
               className="inline-flex items-center gap-1.5 min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
             >
               <span>Manage Tests</span>
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+            <Link
+              to="/admin/students"
+              className="inline-flex items-center gap-1.5 min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
+            >
+              <span>Student Statistics</span>
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
           </div>

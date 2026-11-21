@@ -504,6 +504,14 @@ export type Database = {
         };
         Returns: unknown;
       };
+      get_admin_student_contacts: {
+        Args: Record<string, never>;
+        Returns: Array<{
+          student_id: string;
+          email: string | null;
+          last_sign_in_at: string | null;
+        }>;
+      };
     };
     Enums: {
       [_ in never]: never;

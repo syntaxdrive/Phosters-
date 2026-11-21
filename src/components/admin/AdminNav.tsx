@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 
 const adminLinks = [
   { to: '/admin', label: 'Overview', end: true },
+  { to: '/admin/students', label: 'Students', end: false },
   { to: '/admin/examinations', label: 'Examinations', end: false },
   { to: '/admin/subjects', label: 'Subjects', end: false },
   { to: '/admin/topics', label: 'Topics', end: false },

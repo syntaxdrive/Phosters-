@@ -33,7 +33,8 @@ const fileTypeLabels: Record<MaterialFileType, string> = {
 
 export function LessonPage() {
   const { lessonId = '' } = useParams();
-  const { user } = useAuth();
+  const { user, profile, profileLoading } = useAuth();
+  const isAdmin = profile?.role === 'admin';
 
   const [detail, setDetail] = useState<LessonDetailData | null>(null);
   const [attachedTests, setAttachedTests] = useState<Test[]>([]);
@@ -49,12 +50,14 @@ export function LessonPage() {
   } | null>(null);
 
   const loadLesson = useCallback(async () => {
-    if (!user || !lessonId) return;
+    if (!user || !lessonId || profileLoading) return;
     setLoading(true);
     setError(null);
     setMaterialNotice(null);
 
-    const res = await fetchLessonDetail(user.id, lessonId);
+    const res = await fetchLessonDetail(user.id, lessonId, {
+      allowDrafts: isAdmin,
+    });
     if (res.error || !res.data) {
       setError(res.error || 'Lesson could not be loaded.');
       setLoading(false);
@@ -69,7 +72,7 @@ export function LessonPage() {
     setDetail(res.data);
     setAttachedTests(testsRes.tests);
     setLoading(false);
-  }, [user, lessonId]);
+  }, [user, isAdmin, profileLoading, lessonId]);
 
   useEffect(() => {
     void loadLesson();
@@ -173,7 +176,25 @@ export function LessonPage() {
             {subject.name}
           </span>
         </Link>
+        {isAdmin && (
+          <Link
+            to={`/admin/lessons/${lesson.id}`}
+            className="text-sm font-semibold text-phosters-700 hover:underline shrink-0"
+          >
+            Edit in Admin
+          </Link>
+        )}
       </div>
+
+      {isAdmin && (!topic.is_published || !lesson.is_published) && (
+        <Alert tone="warning" title="Admin preview">
+          {!topic.is_published && !lesson.is_published
+            ? 'Both this lesson and its parent topic are drafts. Publish them in Admin before students can view this lesson.'
+            : !topic.is_published
+              ? 'This lesson is published, but its parent topic is still a draft. Publish the topic in Admin -> Topics so students can see it.'
+              : 'This lesson is still a draft and is hidden from students.'}
+        </Alert>
+      )}
 
       {/* Video Player: sticky at top on mobile while scrolling lesson details */}
       <div

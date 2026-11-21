@@ -59,6 +59,9 @@ const ProfilePage = lazy(() =>
 const AdminDashboardPage = lazy(() =>
   import('./pages/admin/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage }))
 );
+const AdminStudentsPage = lazy(() =>
+  import('./pages/admin/AdminStudentsPage').then((m) => ({ default: m.AdminStudentsPage }))
+);
 const AdminExamsPage = lazy(() =>
   import('./pages/admin/AdminExamsPage').then((m) => ({ default: m.AdminExamsPage }))
 );
@@ -111,6 +114,7 @@ export default function App() {
 
                 <Route element={<AdminRoute />}>
                   <Route path="/admin" element={<AdminDashboardPage />} />
+                  <Route path="/admin/students" element={<AdminStudentsPage />} />
                   <Route path="/admin/examinations" element={<AdminExamsPage />} />
                   <Route path="/admin/subjects" element={<AdminSubjectsPage />} />
                   <Route path="/admin/topics" element={<AdminTopicsPage />} />
