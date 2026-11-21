@@ -2,14 +2,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, BookOpen, ChevronRight, PlayCircle, Settings2, Shield } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { fetchStudentAnnouncements } from '../../services/announcementService';
 import { fetchStudentAttempts } from '../../services/cbtService';
 import {
   fetchLessonCountsByExamSubject,
   fetchRecentLesson,
   fetchStudentEnrollments,
 } from '../../services/learningService';
+import type { AnnouncementFeedItem } from '../../types/announcement';
 import type { StudentAttemptSummary } from '../../types/cbt';
 import type { RecentLessonItem, StudentEnrolledExam } from '../../types/learning';
+import { AnnouncementFeed } from '../../components/student/AnnouncementFeed';
 import { Card } from '../../components/ui/Card';
 import { ErrorState, LoadingState } from '../../components/ui/States';
 
@@ -20,6 +23,7 @@ export function HomePage() {
   const [enrollments, setEnrollments] = useState<StudentEnrolledExam[]>([]);
   const [recentLesson, setRecentLesson] = useState<RecentLessonItem | null>(null);
   const [recentAttempts, setRecentAttempts] = useState<StudentAttemptSummary[]>([]);
+  const [announcements, setAnnouncements] = useState<AnnouncementFeedItem[]>([]);
   const [lessonCounts, setLessonCounts] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,10 +33,11 @@ export function HomePage() {
     setLoading(true);
     setError(null);
 
-    const [enrollRes, recentRes, attemptsRes] = await Promise.all([
+    const [enrollRes, recentRes, attemptsRes, annRes] = await Promise.all([
       fetchStudentEnrollments(user.id),
       fetchRecentLesson(user.id),
       fetchStudentAttempts(user.id, 3),
+      fetchStudentAnnouncements(),
     ]);
 
     if (enrollRes.error) {
@@ -52,6 +57,7 @@ export function HomePage() {
     setEnrollments(loadedEnrollments);
     setRecentLesson(recentRes.recentLesson);
     setRecentAttempts(attemptsRes.attempts);
+    setAnnouncements(annRes.announcements);
     setLessonCounts(countsRes.counts);
     setLoading(false);
   }, [user]);
@@ -125,6 +131,8 @@ export function HomePage() {
           </div>
         </Card>
       )}
+
+      {announcements.length > 0 && <AnnouncementFeed items={announcements} />}
 
       {enrollments.length === 0 ? (
         <Card padding="lg" className="space-y-4">

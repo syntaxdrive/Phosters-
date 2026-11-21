@@ -12,7 +12,7 @@ Implemented across Phases 1–4:
 - Student dashboard with Continue Learning card, subject overview, and recent test results
 - Subject → Topic → Lesson browsing restricted to enrolled subjects & published content
 - Lesson page with sticky mobile 16:9 YouTube player (`youtube-nocookie.com`), validated direct material links (`raw.githubusercontent.com`), completion tracking, attached tests, and previous/next lesson navigation
-- Protected Admin Dashboard (`/admin`) for Examinations, Exam Subject Options, Subjects, Topics, Lessons, Materials, Links, CBT Tests, and Student Usage & Progress Statistics (`/admin/students`)
+- Protected Admin Dashboard (`/admin`) for Examinations, Exam Subject Options, Subjects, Topics, Lessons, Materials, Links, CBT Tests, Student Usage & Progress Statistics (`/admin/students`), and Broadcast Announcements (`/admin/announcements`)
 - Integrated CBT Engine with server-authoritative PostgreSQL grading (`submit_test_attempt`), hidden answer keys before submission, score & percentage summaries, and gated answer review
 
 ---
@@ -41,6 +41,7 @@ In your Supabase **SQL Editor**, run the migration scripts in order:
 2. `supabase/migrations/002_phase2_learning_schema.sql` — creates `exams`, `subjects`, `exam_subjects`, `student_exam_profiles`, `student_exam_subjects`, `topics`, `lessons`, `lesson_materials`, `lesson_links`, `student_lesson_progress`, RLS policies, and seeds JAMB UTME / UI Post-UTME subjects.
 3. `supabase/migrations/003_phase4_cbt_schema.sql` — creates `tests`, `questions`, `question_options`, `test_attempts`, `attempt_answers`, strict answer-key hiding RLS, and secure grading/review RPCs.
 4. `supabase/migrations/004_admin_student_statistics.sql` — creates the admin-only `get_admin_student_contacts()` RPC so admins can view student email addresses and last sign-in activity for follow-up emails.
+5. `supabase/migrations/005_admin_announcements.sql` — creates `announcements` and `announcement_links` with audience targeting and scoped RLS policies.
 
 ### 4. Configure Supabase Auth URLs
 In **Authentication -> URL Configuration**:

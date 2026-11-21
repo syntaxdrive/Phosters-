@@ -1,5 +1,6 @@
 export type UserRole = 'student' | 'admin';
 export type MaterialFileType = 'pdf' | 'image' | 'zip' | 'other';
+export type AnnouncementAudienceType = 'all' | 'exam' | 'exam_subject';
 
 export type Profile = {
   id: string;
@@ -156,6 +157,28 @@ export type AttemptAnswer = {
   selected_option_id: string | null;
   is_correct: boolean;
   points_awarded: number;
+};
+
+export type Announcement = {
+  id: string;
+  title: string;
+  message: string;
+  audience_type: AnnouncementAudienceType;
+  exam_id: string | null;
+  subject_id: string | null;
+  is_pinned: boolean;
+  is_published: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AnnouncementLink = {
+  id: string;
+  announcement_id: string;
+  title: string;
+  url: string;
+  display_order: number;
 };
 
 export type Database = {
@@ -463,6 +486,49 @@ export type Database = {
         };
         Relationships: [];
       };
+      announcements: {
+        Row: Announcement;
+        Insert: {
+          id?: string;
+          title: string;
+          message: string;
+          audience_type?: AnnouncementAudienceType;
+          exam_id?: string | null;
+          subject_id?: string | null;
+          is_pinned?: boolean;
+          is_published?: boolean;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          message?: string;
+          audience_type?: AnnouncementAudienceType;
+          exam_id?: string | null;
+          subject_id?: string | null;
+          is_pinned?: boolean;
+          is_published?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      announcement_links: {
+        Row: AnnouncementLink;
+        Insert: {
+          id?: string;
+          announcement_id: string;
+          title: string;
+          url: string;
+          display_order?: number;
+        };
+        Update: {
+          title?: string;
+          url?: string;
+          display_order?: number;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -482,6 +548,12 @@ export type Database = {
       student_can_access_test: {
         Args: {
           p_test_id: string;
+        };
+        Returns: boolean;
+      };
+      student_can_access_announcement: {
+        Args: {
+          p_announcement_id: string;
         };
         Returns: boolean;
       };

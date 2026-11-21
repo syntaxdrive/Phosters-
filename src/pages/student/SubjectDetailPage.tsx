@@ -2,10 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, CheckSquare, ChevronRight, PlayCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { fetchStudentAnnouncements } from '../../services/announcementService';
 import { fetchPublishedTopicTests } from '../../services/cbtService';
 import { fetchSubjectTopicsAndLessons } from '../../services/learningService';
+import type { AnnouncementFeedItem } from '../../types/announcement';
 import type { Exam, Subject, Test } from '../../types/database';
 import type { TopicWithLessons } from '../../types/learning';
+import { AnnouncementFeed } from '../../components/student/AnnouncementFeed';
 import { Card } from '../../components/ui/Card';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/States';
 
@@ -17,6 +20,7 @@ export function SubjectDetailPage() {
   const [subject, setSubject] = useState<Subject | null>(null);
   const [topics, setTopics] = useState<TopicWithLessons[]>([]);
   const [testsByTopic, setTestsByTopic] = useState<Map<string, Test[]>>(new Map());
+  const [announcements, setAnnouncements] = useState<AnnouncementFeedItem[]>([]);
   const [hasAccess, setHasAccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,12 +38,21 @@ export function SubjectDetailPage() {
     }
 
     const topicIds = res.topics.map((t) => t.id);
-    const testsRes = await fetchPublishedTopicTests(topicIds);
+    const [testsRes, annRes] = await Promise.all([
+      fetchPublishedTopicTests(topicIds),
+      res.hasAccess && res.exam && res.subject
+        ? fetchStudentAnnouncements({
+            examId: res.exam.id,
+            subjectId: res.subject.id,
+          })
+        : Promise.resolve({ announcements: [], error: null }),
+    ]);
 
     setExam(res.exam);
     setSubject(res.subject);
     setTopics(res.topics);
     setTestsByTopic(testsRes.testsByTopic);
+    setAnnouncements(annRes.announcements);
     setHasAccess(res.hasAccess);
     setLoading(false);
   }, [user, examSlug, subjectSlug]);
@@ -117,6 +130,14 @@ export function SubjectDetailPage() {
           )}
         </div>
       </div>
+
+      {announcements.length > 0 && (
+        <AnnouncementFeed
+          items={announcements}
+          heading={`${subject?.name ?? 'Subject'} announcements`}
+          initialVisibleCount={3}
+        />
+      )}
 
       {topics.length === 0 ? (
         <EmptyState

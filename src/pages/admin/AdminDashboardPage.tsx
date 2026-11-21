@@ -122,6 +122,13 @@ export function AdminDashboardPage() {
               <span>Student Statistics</span>
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
+            <Link
+              to="/admin/announcements"
+              className="inline-flex items-center gap-1.5 min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
+            >
+              <span>Broadcast Announcements</span>
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
           </div>
         </Card>
 
