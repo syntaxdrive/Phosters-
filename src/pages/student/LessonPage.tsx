@@ -98,7 +98,8 @@ export function LessonPage() {
       commentsCount: 0,
     };
 
-    if (recordedViewLessonRef.current !== res.data.lesson.id) {
+    const isPublishedLesson = res.data.lesson.is_published && res.data.topic.is_published;
+    if (isPublishedLesson && recordedViewLessonRef.current !== res.data.lesson.id) {
       recordedViewLessonRef.current = res.data.lesson.id;
       const viewRes = await recordContentView('lesson', res.data.lesson.id);
       if (viewRes.viewsCount !== null) {

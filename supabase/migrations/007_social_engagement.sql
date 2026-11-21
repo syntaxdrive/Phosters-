@@ -41,7 +41,19 @@ create table if not exists public.content_likes (
 create index if not exists idx_content_likes_target
   on public.content_likes (target_type, target_key);
 
--- 4. Views counter for courses, topics, and lessons
+-- 4. Views counter & per-user deduplication for courses, topics, and lessons
+create table if not exists public.content_views (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  target_type text not null check (target_type in ('course', 'topic', 'lesson')),
+  target_key text not null check (char_length(trim(target_key)) >= 3 and char_length(target_key) <= 120),
+  created_at timestamptz not null default now(),
+  unique (user_id, target_type, target_key)
+);
+
+create index if not exists idx_content_views_target
+  on public.content_views (target_type, target_key);
+
 create table if not exists public.content_view_counters (
   target_type text not null check (target_type in ('course', 'topic', 'lesson')),
   target_key text not null check (char_length(trim(target_key)) >= 3 and char_length(target_key) <= 120),
@@ -133,6 +145,7 @@ grant execute on function public.user_can_engage_target(text, text) to authentic
 -- ============================================================================
 alter table public.topic_comments enable row level security;
 alter table public.content_likes enable row level security;
+alter table public.content_views enable row level security;
 alter table public.content_view_counters enable row level security;
 
 -- Topic comments: enrolled students + admins can read; students can insert ONLY when topic.comments_enabled = true
@@ -192,7 +205,12 @@ create policy "content_likes_delete_own_or_admin"
   on public.content_likes for delete to authenticated
   using (auth.uid() = user_id or public.is_admin());
 
--- View counters: read-only for authenticated users; writes go through record_content_view RPC
+-- View records & counters: read-only for own/authenticated; writes go through record_content_view RPC
+drop policy if exists "content_views_select_own_or_admin" on public.content_views;
+create policy "content_views_select_own_or_admin"
+  on public.content_views for select to authenticated
+  using (auth.uid() = user_id or public.is_admin());
+
 drop policy if exists "content_view_counters_select_auth" on public.content_view_counters;
 create policy "content_view_counters_select_auth"
   on public.content_view_counters for select to authenticated
@@ -259,7 +277,7 @@ $$;
 revoke all on function public.get_topic_comments(uuid) from public;
 grant execute on function public.get_topic_comments(uuid) to authenticated;
 
--- 2. Record a content view atomically and return new total views
+-- 2. Record a content view once per user and return total unique views
 create or replace function public.record_content_view(
   p_target_type text,
   p_target_key text
@@ -270,21 +288,39 @@ security definer
 set search_path = public
 as $$
 declare
+  v_user_id uuid := auth.uid();
+  v_inserted_id uuid;
   v_views bigint;
 begin
+  if v_user_id is null then
+    return 0;
+  end if;
+
   if not public.user_can_engage_target(p_target_type, p_target_key) then
     return 0;
   end if;
 
-  insert into public.content_view_counters (target_type, target_key, views_count, updated_at)
-  values (p_target_type, p_target_key, 1, now())
-  on conflict (target_type, target_key)
-  do update set
-    views_count = public.content_view_counters.views_count + 1,
-    updated_at = now()
-  returning views_count into v_views;
+  insert into public.content_views (user_id, target_type, target_key)
+  values (v_user_id, p_target_type, p_target_key)
+  on conflict (user_id, target_type, target_key) do nothing
+  returning id into v_inserted_id;
 
-  return coalesce(v_views, 1);
+  if v_inserted_id is not null then
+    insert into public.content_view_counters (target_type, target_key, views_count, updated_at)
+    values (p_target_type, p_target_key, 1, now())
+    on conflict (target_type, target_key)
+    do update set
+      views_count = public.content_view_counters.views_count + 1,
+      updated_at = now()
+    returning views_count into v_views;
+  else
+    select cvc.views_count into v_views
+    from public.content_view_counters cvc
+    where cvc.target_type = p_target_type
+      and cvc.target_key = p_target_key;
+  end if;
+
+  return coalesce(v_views, 0);
 end;
 $$;
 

@@ -84,9 +84,29 @@ export default defineConfig(() => {
       },
     ],
     resolve: {
+      dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+    },
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-dom/client',
+        'react/jsx-runtime',
+        'react/jsx-dev-runtime',
+        'react-router-dom',
+        'lucide-react',
+        '@supabase/supabase-js',
+        'workbox-window',
+        'workbox-core',
+        'workbox-precaching',
+        'workbox-routing',
+        'workbox-strategies',
+        'workbox-expiration',
+        'workbox-cacheable-response',
+      ],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

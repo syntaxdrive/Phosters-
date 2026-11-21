@@ -237,6 +237,14 @@ export type ContentLikeRecord = {
   created_at: string;
 };
 
+export type ContentViewRecord = {
+  id: string;
+  user_id: string;
+  target_type: EngagementTargetType;
+  target_key: string;
+  created_at: string;
+};
+
 export type ContentViewCounter = {
   target_type: EngagementTargetType;
   target_key: string;
@@ -686,6 +694,18 @@ export type Database = {
           views_count?: number;
           updated_at?: string;
         };
+        Relationships: [];
+      };
+      content_views: {
+        Row: ContentViewRecord;
+        Insert: {
+          id?: string;
+          user_id: string;
+          target_type: EngagementTargetType;
+          target_key: string;
+          created_at?: string;
+        };
+        Update: never;
         Relationships: [];
       };
     };
