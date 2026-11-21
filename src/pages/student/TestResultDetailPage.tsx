@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, RotateCcw, XCircle } from 'lucide-react';
-import { fetchAttemptReview } from '../../services/cbtService';
+import { ArrowLeft, CheckCircle2, RotateCcw, Share2, XCircle } from 'lucide-react';
+import { fetchAttemptReview, fetchTestCourseContext } from '../../services/cbtService';
 import type { AttemptReviewPayload } from '../../types/cbt';
+import { ShareDialog, buildTestResultSharePayload } from '../../components/social/ShareDialog';
 import { Alert } from '../../components/ui/Alert';
+import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { ErrorState, LoadingState } from '../../components/ui/States';
 
@@ -11,6 +13,11 @@ export function TestResultDetailPage() {
   const { attemptId = '' } = useParams();
 
   const [review, setReview] = useState<AttemptReviewPayload | null>(null);
+  const [courseContext, setCourseContext] = useState<{
+    examName: string | null;
+    subjectName: string | null;
+  }>({ examName: null, subjectName: null });
+  const [shareOpen, setShareOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,6 +31,11 @@ export function TestResultDetailPage() {
       setLoading(false);
       return;
     }
+    const ctx = await fetchTestCourseContext(
+      res.review.attempt.topic_id,
+      res.review.attempt.lesson_id
+    );
+    setCourseContext(ctx);
     setReview(res.review);
     setLoading(false);
   }, [attemptId]);
@@ -95,16 +107,34 @@ export function TestResultDetailPage() {
           </div>
         </div>
 
-        {attempt.lesson_id && (
-          <div>
-            <Link
-              to={`/app/lessons/${attempt.lesson_id}`}
-              className="text-sm font-semibold text-phosters-700 dark:text-phosters-400 hover:underline"
-            >
-              Return to lesson
-            </Link>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div className="space-y-0.5">
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              Share your score
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Let friends know you took a free {courseContext.examName ?? 'JAMB UTME / UI Post-UTME'} test on Phosters Academy.
+            </p>
           </div>
-        )}
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            {attempt.lesson_id && (
+              <Link
+                to={`/app/lessons/${attempt.lesson_id}`}
+                className="text-sm font-semibold text-phosters-700 dark:text-phosters-400 hover:underline"
+              >
+                Return to lesson
+              </Link>
+            )}
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => setShareOpen(true)}
+            >
+              <Share2 className="h-4 w-4" aria-hidden="true" />
+              <span>Share Result</span>
+            </Button>
+          </div>
+        </div>
       </Card>
 
       {!attempt.show_explanations_after_submission ? (
@@ -194,6 +224,19 @@ export function TestResultDetailPage() {
           ))}
         </section>
       )}
+
+      <ShareDialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        payload={buildTestResultSharePayload({
+          testTitle: attempt.test_title,
+          percentage: attempt.percentage,
+          score: attempt.score,
+          totalPoints: attempt.total_points,
+          examName: courseContext.examName,
+          subjectName: courseContext.subjectName,
+        })}
+      />
     </div>
   );
 }

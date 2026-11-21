@@ -189,6 +189,50 @@ export async function fetchAttemptReview(
   return { review: data as AttemptReviewPayload, error: null };
 }
 
+export async function fetchTestCourseContext(
+  topicId: string | null,
+  lessonId: string | null
+): Promise<{
+  examName: string | null;
+  subjectName: string | null;
+}> {
+  if (!supabase) return { examName: null, subjectName: null };
+
+  let resolvedTopicId = topicId;
+  if (!resolvedTopicId && lessonId) {
+    const lessonRes = await supabase
+      .from('lessons')
+      .select('topic_id')
+      .eq('id', lessonId)
+      .maybeSingle();
+    resolvedTopicId = lessonRes.data?.topic_id ?? null;
+  }
+
+  if (!resolvedTopicId) {
+    return { examName: null, subjectName: null };
+  }
+
+  const topicRes = await supabase
+    .from('topics')
+    .select('exam_id, subject_id')
+    .eq('id', resolvedTopicId)
+    .maybeSingle();
+
+  if (!topicRes.data) {
+    return { examName: null, subjectName: null };
+  }
+
+  const [examRes, subjectRes] = await Promise.all([
+    supabase.from('exams').select('name').eq('id', topicRes.data.exam_id).maybeSingle(),
+    supabase.from('subjects').select('name').eq('id', topicRes.data.subject_id).maybeSingle(),
+  ]);
+
+  return {
+    examName: examRes.data?.name ?? null,
+    subjectName: subjectRes.data?.name ?? null,
+  };
+}
+
 // ============================================================================
 // Admin CBT Management
 // ============================================================================

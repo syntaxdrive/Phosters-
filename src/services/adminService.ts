@@ -238,19 +238,53 @@ export async function deleteExamSubject(id: string): Promise<{ error: string | n
 
 export async function fetchAllTopics(): Promise<{
   topics: Topic[];
+  commentsColumnAvailable?: boolean;
   error: string | null;
 }> {
   if (!supabase) return { topics: [], error: 'Supabase is not configured.' };
   const { data, error } = await supabase
     .from('topics')
     .select(
-      'id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at'
+      'id, exam_id, subject_id, title, description, display_order, is_published, comments_enabled, created_at, updated_at'
     )
     .order('display_order', { ascending: true })
     .order('created_at', { ascending: true });
 
-  if (error) return { topics: [], error: mapAdminError(error) };
-  return { topics: (data ?? []) as Topic[], error: null };
+  if (error) {
+    if (error.code === '42703' || (error.message ?? '').toLowerCase().includes('comments_enabled')) {
+      const fallback = await supabase
+        .from('topics')
+        .select(
+          'id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at'
+        )
+        .order('display_order', { ascending: true })
+        .order('created_at', { ascending: true });
+
+      if (fallback.error) {
+        return { topics: [], commentsColumnAvailable: false, error: mapAdminError(fallback.error) };
+      }
+
+      return {
+        topics: ((fallback.data ?? []) as Array<Omit<Topic, 'comments_enabled'>>).map((t) => ({
+          ...t,
+          comments_enabled: true,
+        })),
+        commentsColumnAvailable: false,
+        error: null,
+      };
+    }
+
+    return { topics: [], error: mapAdminError(error) };
+  }
+
+  return {
+    topics: ((data ?? []) as Topic[]).map((t) => ({
+      ...t,
+      comments_enabled: t.comments_enabled ?? true,
+    })),
+    commentsColumnAvailable: true,
+    error: null,
+  };
 }
 
 export async function saveTopic(input: {
@@ -261,10 +295,11 @@ export async function saveTopic(input: {
   description: string;
   display_order: number;
   is_published: boolean;
+  comments_enabled?: boolean;
 }): Promise<{ topic: Topic | null; error: string | null }> {
   if (!supabase) return { topic: null, error: 'Supabase is not configured.' };
 
-  const payload = {
+  const basePayload = {
     exam_id: input.exam_id,
     subject_id: input.subject_id,
     title: input.title.trim(),
@@ -273,15 +308,37 @@ export async function saveTopic(input: {
     is_published: input.is_published,
   };
 
+  const payload = {
+    ...basePayload,
+    comments_enabled: input.comments_enabled ?? true,
+  };
+
   if (input.id) {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('topics')
       .update(payload)
       .eq('id', input.id)
       .select(
-        'id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at'
+        'id, exam_id, subject_id, title, description, display_order, is_published, comments_enabled, created_at, updated_at'
       )
       .single();
+
+    if (error && (error.code === '42703' || (error.message ?? '').toLowerCase().includes('comments_enabled'))) {
+      const fallback = await supabase
+        .from('topics')
+        .update(basePayload)
+        .eq('id', input.id)
+        .select(
+          'id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at'
+        )
+        .single();
+      if (fallback.error) return { topic: null, error: mapAdminError(fallback.error) };
+      return {
+        topic: { ...(fallback.data as Omit<Topic, 'comments_enabled'>), comments_enabled: true },
+        error: null,
+      };
+    }
+
     if (error) return { topic: null, error: mapAdminError(error) };
     return { topic: data as Topic, error: null };
   }
@@ -290,9 +347,25 @@ export async function saveTopic(input: {
     .from('topics')
     .insert(payload)
     .select(
-      'id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at'
+      'id, exam_id, subject_id, title, description, display_order, is_published, comments_enabled, created_at, updated_at'
     )
     .single();
+
+  if (error && (error.code === '42703' || (error.message ?? '').toLowerCase().includes('comments_enabled'))) {
+    const fallback = await supabase
+      .from('topics')
+      .insert(basePayload)
+      .select(
+        'id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at'
+      )
+      .single();
+    if (fallback.error) return { topic: null, error: mapAdminError(fallback.error) };
+    return {
+      topic: { ...(fallback.data as Omit<Topic, 'comments_enabled'>), comments_enabled: true },
+      error: null,
+    };
+  }
+
   if (error) return { topic: null, error: mapAdminError(error) };
   return { topic: data as Topic, error: null };
 }
@@ -306,6 +379,23 @@ export async function updateTopicPublished(
     .from('topics')
     .update({ is_published: isPublished })
     .eq('id', topicId);
+  return { error: error ? mapAdminError(error) : null };
+}
+
+export async function updateTopicCommentsEnabled(
+  topicId: string,
+  commentsEnabled: boolean
+): Promise<{ error: string | null }> {
+  if (!supabase) return { error: 'Supabase is not configured.' };
+  const { error } = await supabase
+    .from('topics')
+    .update({ comments_enabled: commentsEnabled })
+    .eq('id', topicId);
+  if (error && (error.code === '42703' || (error.message ?? '').toLowerCase().includes('comments_enabled'))) {
+    return {
+      error: 'Run supabase/migrations/007_social_engagement.sql in Supabase first to enable per-topic comment controls.',
+    };
+  }
   return { error: error ? mapAdminError(error) : null };
 }
 
@@ -373,7 +463,10 @@ export async function fetchAdminLessonsList(): Promise<{
 
   const exams = (examsRes.data ?? []) as Exam[];
   const subjects = (subjectsRes.data ?? []) as Subject[];
-  const topics = (topicsRes.data ?? []) as Topic[];
+  const topics = ((topicsRes.data ?? []) as Array<Omit<Topic, 'comments_enabled'>>).map((t) => ({
+    ...t,
+    comments_enabled: true,
+  }));
   const rawLessons = (lessonsRes.data ?? []) as Lesson[];
 
   const examMap = new Map(exams.map((e) => [e.id, e]));
@@ -474,7 +567,9 @@ export async function fetchLessonForEditor(lessonId: string): Promise<{
 
   return {
     lesson,
-    topic: (topicRes.data as Topic | null) ?? null,
+    topic: topicRes.data
+      ? { ...(topicRes.data as Omit<Topic, 'comments_enabled'>), comments_enabled: true }
+      : null,
     materials: (materialsRes.data ?? []) as LessonMaterial[],
     links: (linksRes.data ?? []) as LessonLink[],
     error: null,

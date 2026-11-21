@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Share2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { fetchStudentAttempts } from '../../services/cbtService';
 import type { StudentAttemptSummary } from '../../types/cbt';
+import type { SharePayload } from '../../types/engagement';
+import { ShareDialog, buildTestResultSharePayload } from '../../components/social/ShareDialog';
 import { Card } from '../../components/ui/Card';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/States';
 
 export function ResultsPage() {
   const { user } = useAuth();
   const [attempts, setAttempts] = useState<StudentAttemptSummary[]>([]);
+  const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,10 +69,13 @@ export function ResultsPage() {
                 day: 'numeric',
               });
               return (
-                <li key={attempt.id}>
+                <li
+                  key={attempt.id}
+                  className="flex items-center justify-between gap-2 px-5 py-4 min-h-[64px] hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+                >
                   <Link
                     to={`/app/results/${attempt.id}`}
-                    className="flex items-center justify-between gap-4 px-5 py-4 min-h-[64px] hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+                    className="flex-1 flex items-center justify-between gap-4 min-w-0"
                   >
                     <div className="min-w-0">
                       <p className="text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 truncate">
@@ -86,12 +92,35 @@ export function ResultsPage() {
                       <ChevronRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
                     </div>
                   </Link>
+                  <button
+                    type="button"
+                    aria-label={`Share ${attempt.test_title} result`}
+                    onClick={() =>
+                      setSharePayload(
+                        buildTestResultSharePayload({
+                          testTitle: attempt.test_title,
+                          percentage: attempt.percentage,
+                          score: attempt.score,
+                          totalPoints: attempt.total_points,
+                        })
+                      )
+                    }
+                    className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-phosters-700 dark:hover:text-phosters-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                  >
+                    <Share2 className="h-4 w-4" aria-hidden="true" />
+                  </button>
                 </li>
               );
             })}
           </ul>
         </Card>
       )}
+
+      <ShareDialog
+        open={Boolean(sharePayload)}
+        onClose={() => setSharePayload(null)}
+        payload={sharePayload}
+      />
     </div>
   );
 }

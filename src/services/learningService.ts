@@ -501,19 +501,50 @@ export async function fetchSubjectTopicsAndLessons(
     return { exam, subject, topics: [], hasAccess: false, error: null };
   }
 
+  let rawTopics: Topic[] = [];
   const topicsRes = await supabase
     .from('topics')
-    .select('id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at')
+    .select(
+      'id, exam_id, subject_id, title, description, display_order, is_published, comments_enabled, created_at, updated_at'
+    )
     .eq('exam_id', exam.id)
     .eq('subject_id', subject.id)
     .eq('is_published', true)
     .order('display_order', { ascending: true });
 
-  if (topicsRes.error) {
+  if (
+    topicsRes.error &&
+    (topicsRes.error.code === '42703' ||
+      (topicsRes.error.message ?? '').toLowerCase().includes('comments_enabled'))
+  ) {
+    const fallback = await supabase
+      .from('topics')
+      .select(
+        'id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at'
+      )
+      .eq('exam_id', exam.id)
+      .eq('subject_id', subject.id)
+      .eq('is_published', true)
+      .order('display_order', { ascending: true });
+
+    if (fallback.error) {
+      return { exam, subject, topics: [], hasAccess: true, error: mapDatabaseError(fallback.error) };
+    }
+
+    rawTopics = ((fallback.data ?? []) as Array<Omit<Topic, 'comments_enabled'>>).map((t) => ({
+      ...t,
+      comments_enabled: true,
+    }));
+  } else if (topicsRes.error) {
     return { exam, subject, topics: [], hasAccess: true, error: mapDatabaseError(topicsRes.error) };
+  } else {
+    rawTopics = (topicsRes.data ?? []) as Topic[];
   }
 
-  const topics = (topicsRes.data ?? []) as Topic[];
+  const topics = rawTopics.map((t) => ({
+    ...t,
+    comments_enabled: t.comments_enabled ?? true,
+  }));
   if (topics.length === 0) {
     return { exam, subject, topics: [], hasAccess: true, error: null };
   }
@@ -606,14 +637,39 @@ export async function fetchLessonDetail(
 
   let topicQuery = supabase
     .from('topics')
-    .select('id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at')
+    .select(
+      'id, exam_id, subject_id, title, description, display_order, is_published, comments_enabled, created_at, updated_at'
+    )
     .eq('id', lesson.topic_id);
 
   if (!allowDrafts) {
     topicQuery = topicQuery.eq('is_published', true);
   }
 
-  const topicRes = await topicQuery.maybeSingle();
+  let topicRes = await topicQuery.maybeSingle();
+
+  if (
+    topicRes.error &&
+    (topicRes.error.code === '42703' ||
+      (topicRes.error.message ?? '').toLowerCase().includes('comments_enabled'))
+  ) {
+    let fallbackQuery = supabase
+      .from('topics')
+      .select(
+        'id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at'
+      )
+      .eq('id', lesson.topic_id);
+    if (!allowDrafts) {
+      fallbackQuery = fallbackQuery.eq('is_published', true);
+    }
+    const fallbackRes = await fallbackQuery.maybeSingle();
+    topicRes = {
+      ...fallbackRes,
+      data: fallbackRes.data
+        ? { ...(fallbackRes.data as Omit<Topic, 'comments_enabled'>), comments_enabled: true }
+        : null,
+    } as typeof topicRes;
+  }
 
   if (topicRes.error || !topicRes.data) {
     return {
@@ -624,7 +680,10 @@ export async function fetchLessonDetail(
     };
   }
 
-  const topic = topicRes.data as Topic;
+  const topic: Topic = {
+    ...(topicRes.data as Topic),
+    comments_enabled: (topicRes.data as Topic).comments_enabled ?? true,
+  };
 
   let subjectTopicsQuery = supabase
     .from('topics')

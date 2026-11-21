@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -16,9 +16,18 @@ import { useAuth } from '../../hooks/useAuth';
 import { accessMaterialFile, isSafeExternalHttpUrl, validateMaterialUrl } from '../../lib/materialLinks';
 import { getSafeYouTubeEmbedUrl } from '../../lib/youtube';
 import { fetchPublishedTestsForLesson } from '../../services/cbtService';
+import {
+  fetchEngagementStats,
+  recordContentView,
+  toggleContentLike,
+} from '../../services/engagementService';
 import { fetchLessonDetail, setLessonCompletion } from '../../services/learningService';
 import type { MaterialFileType, Test } from '../../types/database';
+import type { EngagementStats } from '../../types/engagement';
 import type { LessonDetailData } from '../../types/learning';
+import { EngagementBar } from '../../components/social/EngagementBar';
+import { ShareDialog, buildLessonSharePayload } from '../../components/social/ShareDialog';
+import { TopicCommentsSection } from '../../components/social/TopicCommentsSection';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -44,16 +53,23 @@ export function LessonPage() {
   const [isStickyMobileVideo, setIsStickyMobileVideo] = useState(true);
   const [togglingComplete, setTogglingComplete] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [lessonStats, setLessonStats] = useState<EngagementStats | null>(null);
+  const [likingLesson, setLikingLesson] = useState(false);
+  const [engagementError, setEngagementError] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const [materialNotice, setMaterialNotice] = useState<{
     tone: 'info' | 'error' | 'success';
     message: string;
   } | null>(null);
+
+  const recordedViewLessonRef = useRef<string | null>(null);
 
   const loadLesson = useCallback(async () => {
     if (!user || !lessonId || profileLoading) return;
     setLoading(true);
     setError(null);
     setMaterialNotice(null);
+    setEngagementError(null);
 
     const res = await fetchLessonDetail(user.id, lessonId, {
       allowDrafts: isAdmin,
@@ -64,19 +80,63 @@ export function LessonPage() {
       return;
     }
 
-    const testsRes = await fetchPublishedTestsForLesson(
-      res.data.lesson.id,
-      res.data.topic.id
-    );
+    const [testsRes, statsRes] = await Promise.all([
+      fetchPublishedTestsForLesson(res.data.lesson.id, res.data.topic.id),
+      fetchEngagementStats([
+        { targetType: 'lesson', targetKey: res.data.lesson.id },
+      ]),
+    ]);
+
+    let nextLessonStats: EngagementStats = statsRes.statsMap.get(
+      `lesson:${res.data.lesson.id}`
+    ) ?? {
+      targetType: 'lesson',
+      targetKey: res.data.lesson.id,
+      likesCount: 0,
+      likedByMe: false,
+      viewsCount: 0,
+      commentsCount: 0,
+    };
+
+    if (recordedViewLessonRef.current !== res.data.lesson.id) {
+      recordedViewLessonRef.current = res.data.lesson.id;
+      const viewRes = await recordContentView('lesson', res.data.lesson.id);
+      if (viewRes.viewsCount !== null) {
+        nextLessonStats = { ...nextLessonStats, viewsCount: viewRes.viewsCount };
+      }
+    }
 
     setDetail(res.data);
     setAttachedTests(testsRes.tests);
+    setLessonStats(nextLessonStats);
     setLoading(false);
   }, [user, isAdmin, profileLoading, lessonId]);
 
   useEffect(() => {
     void loadLesson();
   }, [loadLesson]);
+
+  async function handleToggleLessonLike() {
+    if (!detail) return;
+    setEngagementError(null);
+    setLikingLesson(true);
+    const res = await toggleContentLike('lesson', detail.lesson.id);
+    setLikingLesson(false);
+
+    if (res.error || res.liked === null || res.likesCount === null) {
+      setEngagementError(res.error || 'Could not update like right now.');
+      return;
+    }
+
+    setLessonStats((prev) => ({
+      targetType: 'lesson',
+      targetKey: detail.lesson.id,
+      likesCount: res.likesCount ?? 0,
+      likedByMe: Boolean(res.liked),
+      viewsCount: prev?.viewsCount ?? 0,
+      commentsCount: prev?.commentsCount ?? 0,
+    }));
+  }
 
   async function handleToggleComplete() {
     if (!user || !detail) return;
@@ -290,6 +350,18 @@ export function LessonPage() {
           </Button>
         </div>
 
+        <EngagementBar
+          likesCount={lessonStats?.likesCount ?? 0}
+          likedByMe={lessonStats?.likedByMe ?? false}
+          viewsCount={lessonStats?.viewsCount ?? 0}
+          liking={likingLesson}
+          onToggleLike={() => void handleToggleLessonLike()}
+          onShare={() => setShareOpen(true)}
+          shareLabel="Share Lesson"
+        />
+
+        {engagementError && <Alert tone="error">{engagementError}</Alert>}
+
         {(lesson.description || lesson.short_description) && (
           <Card padding="md">
             <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Lesson notes &amp; overview</h2>
@@ -420,6 +492,18 @@ export function LessonPage() {
         </section>
       )}
 
+      {/* Topic Discussion & Comments */}
+      <section aria-label="Course topic comments">
+        <Card padding="lg">
+          <TopicCommentsSection
+            topicId={topic.id}
+            topicTitle={topic.title}
+            commentsEnabled={topic.comments_enabled}
+            lessonId={lesson.id}
+          />
+        </Card>
+      </section>
+
       {/* Previous & Next Lesson Navigation */}
       <nav
         aria-label="Lesson sequence navigation"
@@ -488,6 +572,18 @@ export function LessonPage() {
           </div>
         </section>
       )}
+
+      <ShareDialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        payload={buildLessonSharePayload({
+          examName: exam.name,
+          examSlug: exam.slug,
+          subjectName: subject.name,
+          subjectSlug: subject.slug,
+          lessonTitle: lesson.title,
+        })}
+      />
     </div>
   );
 }

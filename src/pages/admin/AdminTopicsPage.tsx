@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Trash2 } from 'lucide-react';
+import { MessageSquare, MessageSquareOff, Trash2 } from 'lucide-react';
 import {
   deleteTopic,
   fetchAllExams,
   fetchAllSubjects,
   fetchAllTopics,
   saveTopic,
+  updateTopicCommentsEnabled,
   updateTopicPublished,
 } from '../../services/adminService';
 import type { Exam, Subject, Topic } from '../../types/database';
 import { AdminNav } from '../../components/admin/AdminNav';
+import { TopicCommentsSection } from '../../components/social/TopicCommentsSection';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -29,6 +31,9 @@ export function AdminTopicsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [commentsColumnAvailable, setCommentsColumnAvailable] = useState(true);
+  const [openCommentsTopicId, setOpenCommentsTopicId] = useState<string | null>(null);
+  const [togglingCommentsId, setTogglingCommentsId] = useState<string | null>(null);
 
   // Form state
   const [editingId, setEditingId] = useState<string | undefined>(undefined);
@@ -38,6 +43,7 @@ export function AdminTopicsPage() {
   const [description, setDescription] = useState('');
   const [displayOrder, setDisplayOrder] = useState(1);
   const [isPublished, setIsPublished] = useState(false);
+  const [commentsEnabled, setCommentsEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -59,6 +65,7 @@ export function AdminTopicsPage() {
     setExams(examsRes.exams);
     setSubjects(subjectsRes.subjects);
     setTopics(topicsRes.topics);
+    setCommentsColumnAvailable(topicsRes.commentsColumnAvailable !== false);
 
     if (examsRes.exams.length > 0) {
       setExamId((prev) => prev || examsRes.exams[0].id);
@@ -79,6 +86,7 @@ export function AdminTopicsPage() {
     setDescription('');
     setDisplayOrder(topics.length + 1);
     setIsPublished(false);
+    setCommentsEnabled(true);
     setFormError(null);
   }
 
@@ -90,6 +98,7 @@ export function AdminTopicsPage() {
     setDescription(topic.description ?? '');
     setDisplayOrder(topic.display_order);
     setIsPublished(topic.is_published);
+    setCommentsEnabled(topic.comments_enabled ?? true);
     setFormError(null);
     setFormSuccess(null);
   }
@@ -117,6 +126,7 @@ export function AdminTopicsPage() {
       description,
       display_order: displayOrder,
       is_published: isPublished,
+      comments_enabled: commentsEnabled,
     });
     setSaving(false);
 
@@ -138,6 +148,32 @@ export function AdminTopicsPage() {
       return;
     }
     await loadData();
+  }
+
+  async function handleToggleComments(topic: Topic) {
+    setFormError(null);
+    setFormSuccess(null);
+    const nextValue = !topic.comments_enabled;
+    setTogglingCommentsId(topic.id);
+    const res = await updateTopicCommentsEnabled(topic.id, nextValue);
+    setTogglingCommentsId(null);
+    if (res.error) {
+      setFormError(res.error);
+      return;
+    }
+    setTopics((prev) =>
+      prev.map((item) =>
+        item.id === topic.id ? { ...item, comments_enabled: nextValue } : item
+      )
+    );
+    if (editingId === topic.id) {
+      setCommentsEnabled(nextValue);
+    }
+    setFormSuccess(
+      nextValue
+        ? `Enabled student comments for "${topic.title}".`
+        : `Disabled student comments for "${topic.title}".`
+    );
   }
 
   async function handleDelete(topicId: string) {
@@ -174,6 +210,16 @@ export function AdminTopicsPage() {
       </div>
 
       <AdminNav />
+
+      {!commentsColumnAvailable && (
+        <Alert tone="info" title="Social engagement migration needed">
+          Run{' '}
+          <code className="font-mono text-xs bg-white/80 dark:bg-slate-800/80 px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+            supabase/migrations/007_social_engagement.sql
+          </code>{' '}
+          in Supabase SQL Editor to enable per-topic comment controls, student comments, likes, and views.
+        </Alert>
+      )}
 
       {formError && <Alert tone="error">{formError}</Alert>}
       {formSuccess && <Alert tone="success">{formSuccess}</Alert>}
@@ -261,17 +307,31 @@ export function AdminTopicsPage() {
                 onChange={(e) => setDisplayOrder(Number(e.target.value) || 0)}
               />
 
-              <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isPublished}
-                  onChange={(e) => setIsPublished(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600"
-                />
-                <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                  Published (visible to enrolled students)
-                </span>
-              </label>
+              <div className="space-y-1">
+                <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isPublished}
+                    onChange={(e) => setIsPublished(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600"
+                  />
+                  <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                    Published (visible to enrolled students)
+                  </span>
+                </label>
+
+                <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={commentsEnabled}
+                    onChange={(e) => setCommentsEnabled(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600"
+                  />
+                  <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                    Allow student comments on this topic
+                  </span>
+                </label>
+              </div>
 
               <Button type="submit" fullWidth loading={saving}>
                 {editingId ? 'Save Changes' : 'Create Topic'}
@@ -347,11 +407,48 @@ export function AdminTopicsPage() {
                               }
                             >
                               {topic.is_published ? 'Published' : 'Draft'}
+                            </span>{' '}
+                            ·{' '}
+                            <span
+                              className={
+                                topic.comments_enabled
+                                  ? 'font-medium text-slate-700 dark:text-slate-300'
+                                  : 'font-medium text-slate-500 dark:text-slate-400'
+                              }
+                            >
+                              {topic.comments_enabled ? 'Comments On' : 'Comments Off'}
                             </span>
                           </p>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 shrink-0">
+                          <Button
+                            variant="secondary"
+                            loading={togglingCommentsId === topic.id}
+                            onClick={() => void handleToggleComments(topic)}
+                          >
+                            {topic.comments_enabled ? (
+                              <>
+                                <MessageSquareOff className="h-4 w-4" aria-hidden="true" />
+                                <span>Disable Comments</span>
+                              </>
+                            ) : (
+                              <>
+                                <MessageSquare className="h-4 w-4 text-phosters-700 dark:text-phosters-400" aria-hidden="true" />
+                                <span>Enable Comments</span>
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() =>
+                              setOpenCommentsTopicId(
+                                openCommentsTopicId === topic.id ? null : topic.id
+                              )
+                            }
+                          >
+                            {openCommentsTopicId === topic.id ? 'Hide Discussion' : 'Moderate'}
+                          </Button>
                           <Button
                             variant="secondary"
                             onClick={() => void handleTogglePublish(topic)}
@@ -373,6 +470,16 @@ export function AdminTopicsPage() {
                           </button>
                         </div>
                       </div>
+
+                      {openCommentsTopicId === topic.id && (
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 p-4">
+                          <TopicCommentsSection
+                            topicId={topic.id}
+                            topicTitle={topic.title}
+                            commentsEnabled={topic.comments_enabled}
+                          />
+                        </div>
+                      )}
 
                       {isConfirming && (
                         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/70 p-3 text-xs text-red-900 dark:text-red-200">

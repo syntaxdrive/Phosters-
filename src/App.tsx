@@ -25,6 +25,9 @@ const SettingsPage = lazy(() =>
 const LegalDocumentPage = lazy(() =>
   import('./pages/legal/LegalDocumentPage').then((m) => ({ default: m.LegalDocumentPage }))
 );
+const ShareLandingPage = lazy(() =>
+  import('./pages/ShareLandingPage').then((m) => ({ default: m.ShareLandingPage }))
+);
 const LoginPage = lazy(() =>
   import('./pages/auth/LoginPage').then((m) => ({ default: m.LoginPage }))
 );
@@ -126,6 +129,7 @@ export default function App() {
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/legal" element={<LegalDocumentPage />} />
                 <Route path="/legal/:docSlug" element={<LegalDocumentPage />} />
+                <Route path="/share" element={<ShareLandingPage />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />

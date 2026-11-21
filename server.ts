@@ -20,53 +20,74 @@ async function createServer() {
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/api/push/status', async (req, res) => {
-    const authCheck = await verifyAdminAuthorization(req.headers.authorization);
-    if (!authCheck.ok) {
-      res.status(authCheck.status).json({ error: authCheck.error });
-      return;
+    try {
+      const authCheck = await verifyAdminAuthorization(req.headers.authorization);
+      if (!authCheck.ok) {
+        res.status(authCheck.status).json({ error: authCheck.error });
+        return;
+      }
+      res.status(200).json(getPushServerStatus());
+    } catch (err) {
+      console.error('Express /api/push/status error:', err);
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Unexpected push status error.',
+      });
     }
-    res.status(200).json(getPushServerStatus());
   });
 
   app.post('/api/push/send', async (req, res) => {
-    const authCheck = await verifyAdminAuthorization(req.headers.authorization);
-    if (!authCheck.ok || !authCheck.userId) {
-      res.status(authCheck.status).json({ error: authCheck.error });
-      return;
-    }
+    try {
+      const authCheck = await verifyAdminAuthorization(req.headers.authorization);
+      if (!authCheck.ok || !authCheck.userId) {
+        res.status(authCheck.status).json({ error: authCheck.error });
+        return;
+      }
 
-    const payload = req.body as SendPushPayload | undefined;
-    if (!payload || typeof payload !== 'object' || !('type' in payload)) {
-      res.status(400).json({ error: 'Invalid push notification request payload.' });
-      return;
-    }
+      const payload = req.body as SendPushPayload | undefined;
+      if (!payload || typeof payload !== 'object' || !('type' in payload)) {
+        res.status(400).json({ error: 'Invalid push notification request payload.' });
+        return;
+      }
 
-    const result = await sendTargetedPushNotifications(payload, authCheck.userId);
-    res.status(result.status).json(result.body);
+      const result = await sendTargetedPushNotifications(payload, authCheck.userId);
+      res.status(result.status).json(result.body);
+    } catch (err) {
+      console.error('Express /api/push/send error:', err);
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Unexpected push send error.',
+      });
+    }
   });
 
   app.all('/api/push/remind-inactive', async (req, res) => {
-    if (req.method !== 'POST' && req.method !== 'GET') {
-      res.status(405).json({ error: 'Method not allowed.' });
-      return;
+    try {
+      if (req.method !== 'POST' && req.method !== 'GET') {
+        res.status(405).json({ error: 'Method not allowed.' });
+        return;
+      }
+
+      const authCheck = await verifyCronOrAdminAuthorization(req.headers.authorization);
+      if (!authCheck.ok) {
+        res.status(authCheck.status).json({ error: authCheck.error });
+        return;
+      }
+
+      const input: RemindInactiveInput =
+        req.method === 'POST' && req.body && typeof req.body === 'object'
+          ? (req.body as RemindInactiveInput)
+          : {};
+
+      const result = await runInactivityAndTestReminders(
+        input,
+        authCheck.triggeredByUserId
+      );
+      res.status(result.status).json(result.body);
+    } catch (err) {
+      console.error('Express /api/push/remind-inactive error:', err);
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Unexpected push reminder error.',
+      });
     }
-
-    const authCheck = await verifyCronOrAdminAuthorization(req.headers.authorization);
-    if (!authCheck.ok) {
-      res.status(authCheck.status).json({ error: authCheck.error });
-      return;
-    }
-
-    const input: RemindInactiveInput =
-      req.method === 'POST' && req.body && typeof req.body === 'object'
-        ? (req.body as RemindInactiveInput)
-        : {};
-
-    const result = await runInactivityAndTestReminders(
-      input,
-      authCheck.triggeredByUserId
-    );
-    res.status(result.status).json(result.body);
   });
 
   const isProd = process.env.NODE_ENV === 'production';

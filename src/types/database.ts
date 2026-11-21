@@ -8,6 +8,7 @@ export type PushNotificationType =
   | 'inactivity_reminder'
   | 'test_reminder'
   | 'custom';
+export type EngagementTargetType = 'course' | 'topic' | 'lesson';
 
 export type Profile = {
   id: string;
@@ -71,6 +72,7 @@ export type Topic = {
   description: string | null;
   display_order: number;
   is_published: boolean;
+  comments_enabled: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -217,6 +219,31 @@ export type PushNotificationLog = {
   created_at: string;
 };
 
+export type TopicCommentRecord = {
+  id: string;
+  topic_id: string;
+  lesson_id: string | null;
+  user_id: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContentLikeRecord = {
+  id: string;
+  user_id: string;
+  target_type: EngagementTargetType;
+  target_key: string;
+  created_at: string;
+};
+
+export type ContentViewCounter = {
+  target_type: EngagementTargetType;
+  target_key: string;
+  views_count: number;
+  updated_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -332,6 +359,7 @@ export type Database = {
           description?: string | null;
           display_order?: number;
           is_published?: boolean;
+          comments_enabled?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -342,6 +370,7 @@ export type Database = {
           description?: string | null;
           display_order?: number;
           is_published?: boolean;
+          comments_enabled?: boolean;
           updated_at?: string;
         };
         Relationships: [];
@@ -616,6 +645,49 @@ export type Database = {
         };
         Relationships: [];
       };
+      topic_comments: {
+        Row: TopicCommentRecord;
+        Insert: {
+          id?: string;
+          topic_id: string;
+          lesson_id?: string | null;
+          user_id: string;
+          body: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          body?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      content_likes: {
+        Row: ContentLikeRecord;
+        Insert: {
+          id?: string;
+          user_id: string;
+          target_type: EngagementTargetType;
+          target_key: string;
+          created_at?: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
+      content_view_counters: {
+        Row: ContentViewCounter;
+        Insert: {
+          target_type: EngagementTargetType;
+          target_key: string;
+          views_count?: number;
+          updated_at?: string;
+        };
+        Update: {
+          views_count?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -669,6 +741,62 @@ export type Database = {
           student_id: string;
           email: string | null;
           last_sign_in_at: string | null;
+        }>;
+      };
+      user_can_engage_target: {
+        Args: {
+          p_target_type: string;
+          p_target_key: string;
+        };
+        Returns: boolean;
+      };
+      get_topic_comments: {
+        Args: {
+          p_topic_id: string;
+        };
+        Returns: Array<{
+          id: string;
+          topic_id: string;
+          lesson_id: string | null;
+          user_id: string;
+          author_name: string;
+          author_role: string;
+          body: string;
+          created_at: string;
+          is_own: boolean;
+        }>;
+      };
+      record_content_view: {
+        Args: {
+          p_target_type: string;
+          p_target_key: string;
+        };
+        Returns: number;
+      };
+      toggle_content_like: {
+        Args: {
+          p_target_type: string;
+          p_target_key: string;
+        };
+        Returns: {
+          liked: boolean;
+          likes_count: number;
+        };
+      };
+      get_engagement_stats: {
+        Args: {
+          p_targets: Array<{
+            target_type: string;
+            target_key: string;
+          }>;
+        };
+        Returns: Array<{
+          target_type: string;
+          target_key: string;
+          likes_count: number;
+          liked_by_me: boolean;
+          views_count: number;
+          comments_count: number;
         }>;
       };
     };

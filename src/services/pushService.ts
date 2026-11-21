@@ -141,6 +141,67 @@ async function getAccessToken(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
+async function parsePushApiResponse<T>(
+  res: Response,
+  fallbackError: string
+): Promise<{ data: T | null; error: string | null }> {
+  let rawText = '';
+  try {
+    rawText = await res.text();
+  } catch {
+    return {
+      data: null,
+      error: `Push service returned HTTP ${res.status} with an unreadable response.`,
+    };
+  }
+
+  let parsed: (T & { error?: string }) | null = null;
+  if (rawText.trim()) {
+    try {
+      parsed = JSON.parse(rawText) as T & { error?: string };
+    } catch {
+      parsed = null;
+    }
+  }
+
+  if (!parsed) {
+    const trimmed = rawText.trim();
+    const looksHtml =
+      trimmed.startsWith('<!doctype') ||
+      trimmed.startsWith('<!DOCTYPE') ||
+      trimmed.startsWith('<html');
+
+    if (res.status === 404) {
+      return {
+        data: null,
+        error:
+          'Push API endpoint returned 404 Not Found. Verify that the /api/push serverless routes are deployed.',
+      };
+    }
+
+    if (looksHtml) {
+      return {
+        data: null,
+        error: `Push API returned an HTML page instead of JSON (HTTP ${res.status}). On Vercel, check that Deployment Protection is disabled or /api routes are deploying cleanly.`,
+      };
+    }
+
+    const snippet = trimmed.slice(0, 140);
+    return {
+      data: null,
+      error: snippet
+        ? `Push API returned HTTP ${res.status}: ${snippet}`
+        : `Push API returned an empty non-JSON response (HTTP ${res.status}).`,
+    };
+  }
+
+  if (!res.ok) {
+    return { data: null, error: parsed.error || `${fallbackError} (HTTP ${res.status})` };
+  }
+
+  return { data: parsed as T, error: null };
+}
+
 export async function fetchPushServerStatus(): Promise<{
   status: PushServerStatus | null;
   error: string | null;
@@ -157,15 +218,16 @@ export async function fetchPushServerStatus(): Promise<{
         Authorization: `Bearer ${token}`,
       },
     });
-    const data = (await res.json()) as PushServerStatus & { error?: string };
-    if (!res.ok) {
-      return { status: null, error: data.error || 'Could not verify push server status.' };
-    }
-    return { status: data, error: null };
-  } catch {
+    const parsed = await parsePushApiResponse<PushServerStatus>(
+      res,
+      'Could not verify push server status.'
+    );
+    return { status: parsed.data, error: parsed.error };
+  } catch (err) {
+    const detail = err instanceof Error && err.message ? ` (${err.message})` : '';
     return {
       status: null,
-      error: 'Push notification API is unreachable.',
+      error: `Push notification API is unreachable${detail}.`,
     };
   }
 }
@@ -187,15 +249,16 @@ export async function triggerPushNotification(
       },
       body: JSON.stringify(payload),
     });
-    const data = (await res.json()) as SendPushResponse & { error?: string };
-    if (!res.ok) {
-      return { result: null, error: data.error || 'Failed to send push notification.' };
-    }
-    return { result: data, error: null };
-  } catch {
+    const parsed = await parsePushApiResponse<SendPushResponse>(
+      res,
+      'Failed to send push notification.'
+    );
+    return { result: parsed.data, error: parsed.error };
+  } catch (err) {
+    const detail = err instanceof Error && err.message ? ` (${err.message})` : '';
     return {
       result: null,
-      error: 'Unable to reach push notification service.',
+      error: `Unable to reach push notification service${detail}.`,
     };
   }
 }
@@ -217,15 +280,16 @@ export async function triggerInactivityReminders(
       },
       body: JSON.stringify(input),
     });
-    const data = (await res.json()) as RemindInactiveResponse & { error?: string };
-    if (!res.ok) {
-      return { result: null, error: data.error || 'Failed to send study reminders.' };
-    }
-    return { result: data, error: null };
-  } catch {
+    const parsed = await parsePushApiResponse<RemindInactiveResponse>(
+      res,
+      'Failed to send study reminders.'
+    );
+    return { result: parsed.data, error: parsed.error };
+  } catch (err) {
+    const detail = err instanceof Error && err.message ? ` (${err.message})` : '';
     return {
       result: null,
-      error: 'Unable to reach push reminder service.',
+      error: `Unable to reach push reminder service${detail}.`,
     };
   }
 }

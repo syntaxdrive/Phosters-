@@ -56,6 +56,7 @@ export function AdminAnnouncementsPage() {
   const [saving, setSaving] = useState(false);
   const [pushingId, setPushingId] = useState<string | null>(null);
   const [pushStatus, setPushStatus] = useState<PushServerStatus | null>(null);
+  const [pushStatusError, setPushStatusError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -73,6 +74,7 @@ export function AdminAnnouncementsPage() {
     setAnnouncements(res.announcements);
     setExams(res.exams);
     setSubjects(res.subjects);
+    setPushStatusError(pushStatusRes.error);
     if (pushStatusRes.status) {
       setPushStatus(pushStatusRes.status);
     }
@@ -252,7 +254,13 @@ export function AdminAnnouncementsPage() {
 
       <AdminNav />
 
-      {pushStatus && !pushStatus.configured && (
+      {pushStatusError && (
+        <Alert tone="warning" title="Push notification service unreachable">
+          {pushStatusError}
+        </Alert>
+      )}
+
+      {!pushStatusError && pushStatus && !pushStatus.configured && (
         <Alert tone="info" title="Native push notifications not yet configured on server">
           Broadcasts will appear inside the app immediately. To also trigger lock-screen phone notifications, configure{' '}
           <code className="font-mono text-xs bg-white/80 dark:bg-slate-800/80 px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700">
