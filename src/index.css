@@ -16,6 +16,17 @@
   --color-phosters-700: #0b5630;
   --color-phosters-800: #0a4427;
   --color-phosters-900: #083821;
+
+  --color-ministry-50: #eef2ff;
+  --color-ministry-100: #e0e7ff;
+  --color-ministry-200: #c7d2fe;
+  --color-ministry-300: #93a8ff;
+  --color-ministry-400: #6078ff;
+  --color-ministry-500: #3649f5;
+  --color-ministry-600: #2230db;
+  --color-ministry-700: #1a23b4;
+  --color-ministry-800: #151b8c;
+  --color-ministry-900: #0c1054;
 }
 
 @layer base {

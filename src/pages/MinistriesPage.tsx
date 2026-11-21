@@ -30,6 +30,7 @@ interface MinistryCardItem {
   alt: string;
   actionType: 'connect' | 'academy' | 'youtube';
   purpose?: ConnectPurpose;
+  isFlyerGraphic?: boolean;
 }
 
 interface PillarItem {
@@ -42,11 +43,15 @@ interface PillarItem {
   alt: string;
 }
 
-const HERO_IMAGE = '/src/assets/images/church_hero_worship_1795287125114.jpg';
-const PROSKYNESIS_IMAGE = '/src/assets/images/proskynesis_evening_1795287124341.jpg';
-const OUTREACH_IMAGE = '/src/assets/images/campus_outreach_study_1795287124542.jpg';
-const SUNDAY_TEACHING_IMAGE = '/src/assets/images/sunday_word_teaching_1795287617997.jpg';
-const MIDWEEK_PRAYER_IMAGE = '/src/assets/images/midweek_fellowship_prayer_1795287618056.jpg';
+const HERO_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_12-16-41_2627_2__03315170.jpg';
+const PROSKYNESIS_CARD_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_11-35-02_4464_36__214b33fd.jpg';
+const WORSHIP_DRAPE_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_12-17-17_0587_30__0560dea7.jpg';
+const SUNDAY_TEACHING_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_12-16-53_2026_11__30d0b2d1.jpg';
+const MIDWEEK_MINISTER_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_12-17-16_0346_29__551cefb2.jpg';
+const CAMPUS_STUDENTS_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_12-16-53_4694_10__f1d38e41.jpg';
+const FELLOWSHIP_JOY_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_11-35-00_7854_35__e112d856.jpg';
+const OFFICIAL_MINISTRY_BANNER = '/assets/aistudio/IMG-20261121-WA0018_235ddb0e.jpg';
+const SUNDAY_SERVICE_GRAPHIC = '/assets/aistudio/IMG-20261017-WA0019_8c3e86f1.jpg';
 
 const YOUTUBE_CHANNEL_SEARCH_URL =
   'https://www.youtube.com/results?search_query=%22The+Phosters+Ministries%22+Proskynesis';
@@ -58,8 +63,20 @@ const GATHERING_CARDS: MinistryCardItem[] = [
     title: 'Sunday Service',
     subtitle: 'Word exposition, worship, and fellowship at UI.',
     schedule: 'Sundays · 9:00 AM · JCR, Queen Elizabeth II Hall',
+    image: SUNDAY_SERVICE_GRAPHIC,
+    alt: 'The Phosters Ministries Sunday Service at 9am at JCR Queen Elizabeth Hall, University of Ibadan with Pastor Kunle and Pastor Mrs Treasure Heben',
+    actionType: 'connect',
+    purpose: 'visit',
+    isFlyerGraphic: true,
+  },
+  {
+    id: 'sunday-word',
+    kicker: 'Word Exposition',
+    title: 'Sunday Word',
+    subtitle: 'Verse-by-verse teaching rooted in Scripture.',
+    schedule: 'Sundays · 9:00 AM · JCR, Queen Elizabeth II Hall',
     image: SUNDAY_TEACHING_IMAGE,
-    alt: 'Pastor teaching Scripture to university students during Sunday service',
+    alt: 'Pastor Kunle preaching with microphone at The Phosters Ministries service',
     actionType: 'connect',
     purpose: 'visit',
   },
@@ -69,8 +86,8 @@ const GATHERING_CARDS: MinistryCardItem[] = [
     title: 'Tuesday Fellowship',
     subtitle: 'Focused Bible study and midweek prayer renewal.',
     schedule: 'Tuesdays · 5:00 PM – 6:00 PM · JCR, Queen Elizabeth II Hall',
-    image: MIDWEEK_PRAYER_IMAGE,
-    alt: 'Students gathered in midweek prayer and Bible study',
+    image: MIDWEEK_MINISTER_IMAGE,
+    alt: 'Minister teaching inside JCR Queen Elizabeth Hall during fellowship',
     actionType: 'connect',
     purpose: 'visit',
   },
@@ -80,8 +97,8 @@ const GATHERING_CARDS: MinistryCardItem[] = [
     title: "Proskynesis '26",
     subtitle: 'Spiritual Sacrifices · Our 1st-anniversary worship evening.',
     schedule: 'Annual Gathering · Watch Archives on YouTube',
-    image: PROSKYNESIS_IMAGE,
-    alt: 'Evening acoustic worship stage during Proskynesis',
+    image: WORSHIP_DRAPE_IMAGE,
+    alt: 'Worship minister singing passionately during The Phosters Ministries gathering',
     actionType: 'youtube',
   },
   {
@@ -90,8 +107,8 @@ const GATHERING_CARDS: MinistryCardItem[] = [
     title: 'Phosters Academy',
     subtitle: 'Free JAMB UTME & UI Post-UTME video lessons and CBT mocks.',
     schedule: '100% Free · Open to All Aspirants',
-    image: OUTREACH_IMAGE,
-    alt: 'Nigerian university students studying together with notebooks and laptop',
+    image: CAMPUS_STUDENTS_IMAGE,
+    alt: 'University of Ibadan students smiling together inside JCR Queen Elizabeth Hall',
     actionType: 'academy',
   },
   {
@@ -100,8 +117,8 @@ const GATHERING_CARDS: MinistryCardItem[] = [
     title: 'UI Freshers Care',
     subtitle: 'Orientation, campus directions, and student community.',
     schedule: 'Queen Elizabeth Hall 2 · University of Ibadan',
-    image: HERO_IMAGE,
-    alt: 'Congregation worshipping together in Ibadan',
+    image: FELLOWSHIP_JOY_IMAGE,
+    alt: 'Joyful church member smiling in fellowship inside JCR Queen Elizabeth Hall',
     actionType: 'connect',
     purpose: 'ui_support',
   },
@@ -116,7 +133,7 @@ const MINISTRY_PILLARS: PillarItem[] = [
       'Every Sunday at 9:00 AM and Tuesday evening from 5:00 PM to 6:00 PM, we teach Scripture verse by verse so believers know Christ deeply and stand firm in truth.',
     scheduleNote: 'Sundays 9:00 AM · Tuesdays 5:00 PM – 6:00 PM',
     image: SUNDAY_TEACHING_IMAGE,
-    alt: 'Teaching from the Bible during Sunday worship service',
+    alt: 'Pastor teaching the Word during worship service at The Phosters Ministries',
   },
   {
     id: 'worship',
@@ -124,9 +141,9 @@ const MINISTRY_PILLARS: PillarItem[] = [
     scriptureRef: 'John 4:23–24',
     summary:
       'From weekly assemblies at Queen Elizabeth Hall 2 to our annual Proskynesis convocation, worship is offered in spirit, truth, and unhurried reverence.',
-    scheduleNote: "Annual Proskynesis Worship & Word Evening",
-    image: HERO_IMAGE,
-    alt: 'Church congregation lifting hands in worship',
+    scheduleNote: 'Annual Proskynesis Worship & Word Evening',
+    image: PROSKYNESIS_CARD_IMAGE,
+    alt: 'Worship leader singing in front of The Phosters Ministries backdrop',
   },
   {
     id: 'discipleship',
@@ -135,8 +152,8 @@ const MINISTRY_PILLARS: PillarItem[] = [
     summary:
       'True to the name Phosteres (light-bearers), we walk closely with young men and women to build godly character, spiritual discipline, and purpose.',
     scheduleNote: 'JCR, Queen Elizabeth Hall 2, University of Ibadan',
-    image: PROSKYNESIS_IMAGE,
-    alt: 'Intimate evening discipleship and worship setting',
+    image: HERO_IMAGE,
+    alt: 'Pastor Kunle encouraging believers during a teaching session',
   },
   {
     id: 'prayer',
@@ -145,8 +162,8 @@ const MINISTRY_PILLARS: PillarItem[] = [
     summary:
       'Intercession anchors everything we do—praying for students facing examinations, families across Ibadan, and spiritual awakening on campus.',
     scheduleNote: 'Tuesdays 5:00 PM – 6:00 PM · Midweek Service',
-    image: MIDWEEK_PRAYER_IMAGE,
-    alt: 'Students praying together during midweek service',
+    image: MIDWEEK_MINISTER_IMAGE,
+    alt: 'Midweek fellowship teaching and prayer session at Queen Elizabeth Hall 2',
   },
   {
     id: 'fellowship',
@@ -155,8 +172,8 @@ const MINISTRY_PILLARS: PillarItem[] = [
     summary:
       'No student has to walk through University of Ibadan alone. Our church family shares life, encouragement, and practical hospitality every week.',
     scheduleNote: 'Open to UI Students, Staff & Ibadan Residents',
-    image: HERO_IMAGE,
-    alt: 'Vibrant fellowship of students and church members',
+    image: FELLOWSHIP_JOY_IMAGE,
+    alt: 'Smiling member sharing fellowship inside JCR Queen Elizabeth Hall 2',
   },
   {
     id: 'outreach',
@@ -165,8 +182,8 @@ const MINISTRY_PILLARS: PillarItem[] = [
     summary:
       'Through Phosters Academy, we serve JAMB UTME and UI Post-UTME aspirants with structured video classes, notes, and CBT simulations completely free of charge.',
     scheduleNote: 'Free Online Prep · Powered by The Phosters Ministries',
-    image: OUTREACH_IMAGE,
-    alt: 'Students and mentor studying together for entrance exams',
+    image: CAMPUS_STUDENTS_IMAGE,
+    alt: 'Students gathered warmly inside Queen Elizabeth Hall at University of Ibadan',
   },
 ];
 
@@ -222,11 +239,11 @@ function SafePhoto({ src, alt, className = '', lazy = false, fallbackTitle }: Sa
     return (
       <div
         className={[
-          'flex flex-col items-center justify-center p-6 text-center bg-gradient-to-br from-phosters-900 via-slate-900 to-slate-950 text-slate-100',
+          'flex flex-col items-center justify-center p-6 text-center bg-gradient-to-br from-ministry-900 via-slate-900 to-slate-950 text-slate-100',
           className,
         ].join(' ')}
       >
-        <BookOpen className="h-7 w-7 text-phosters-300 mb-2" aria-hidden="true" />
+        <BookOpen className="h-7 w-7 text-ministry-300 mb-2" aria-hidden="true" />
         <p className="font-display text-base font-semibold">{fallbackTitle}</p>
       </div>
     );
@@ -389,7 +406,7 @@ export function MinistriesPage() {
           <div className="flex items-center shrink-0">
             <Link
               to={academyHref}
-              className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-lg bg-white text-slate-950 text-xs sm:text-sm font-semibold hover:bg-emerald-50 transition-colors duration-150 whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-lg bg-white text-slate-950 text-xs sm:text-sm font-semibold hover:bg-ministry-50 transition-colors duration-150 whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
             >
               Phosters Academy
             </Link>
@@ -403,23 +420,23 @@ export function MinistriesPage() {
           <div className="relative rounded-2xl overflow-hidden border border-white/10 min-h-[500px] sm:min-h-[560px] lg:min-h-[620px] flex flex-col justify-end">
             <SafePhoto
               src={HERO_IMAGE}
-              alt="Congregation worshipping at The Phosters Ministries in Ibadan"
-              className="absolute inset-0 h-full w-full object-cover"
+              alt="Pastor Kunle preaching at The Phosters Ministries in Ibadan"
+              className="absolute inset-0 h-full w-full object-cover object-[50%_18%]"
               fallbackTitle="The Phosters Ministries"
             />
-            {/* Measured cinematic scrim */}
+            {/* Measured royal indigo & violet editorial scrim matching brand palette */}
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-slate-950/30"
+              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#04061c]/95 via-[#0e1975]/70 to-[#1f1266]/45"
             />
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 bg-gradient-to-r from-phosters-900/45 via-transparent to-black/35"
+              className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-[#060928]/85 via-[#1c2bd8]/40 to-[#5c20c9]/30"
             />
 
             <div className="relative z-10 p-6 sm:p-10 lg:p-12 flex flex-col lg:flex-row lg:items-end justify-between gap-8">
               <div className="max-w-2xl space-y-5">
-                <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-emerald-200/90 font-medium">
+                <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-ministry-200 font-medium">
                   <span>JCR, Queen Elizabeth Hall 2</span>
                   <span aria-hidden="true">·</span>
                   <span>University of Ibadan</span>
@@ -431,7 +448,7 @@ export function MinistriesPage() {
                   Shine as lights in the Word and worship.
                 </h1>
 
-                <p className="text-sm sm:text-base text-slate-200 max-w-xl leading-relaxed">
+                <p className="text-sm sm:text-base text-slate-100/90 max-w-xl leading-relaxed">
                   Join a Christ-centred church family inside University of Ibadan every Sunday at 9:00 AM and Tuesday from 5:00 PM to 6:00 PM—growing together in Scripture, prayer, and campus outreach.
                 </p>
 
@@ -439,7 +456,7 @@ export function MinistriesPage() {
                   <button
                     type="button"
                     onClick={() => jumpToConnect('visit')}
-                    className="inline-flex items-center justify-center gap-2 min-h-[48px] px-6 py-3 rounded-lg bg-white text-slate-950 text-sm sm:text-base font-semibold hover:bg-emerald-50 transition-colors duration-150 cursor-pointer whitespace-nowrap shrink-0"
+                    className="inline-flex items-center justify-center gap-2 min-h-[48px] px-6 py-3 rounded-lg bg-white text-slate-950 text-sm sm:text-base font-semibold hover:bg-ministry-50 transition-colors duration-150 cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <span>Plan Your Sunday Visit</span>
                     <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -459,14 +476,14 @@ export function MinistriesPage() {
                 <div className="p-3.5 flex items-center gap-3.5">
                   <div className="relative h-20 w-24 rounded-lg overflow-hidden shrink-0 border border-white/10">
                     <SafePhoto
-                      src={PROSKYNESIS_IMAGE}
-                      alt="Proskynesis worship and Word evening"
-                      className="h-full w-full object-cover"
+                      src={PROSKYNESIS_CARD_IMAGE}
+                      alt="Worship minister leading Proskynesis worship evening"
+                      className="h-full w-full object-cover object-top"
                       fallbackTitle="Proskynesis '26"
                     />
                   </div>
                   <div className="min-w-0 flex-1 space-y-1">
-                    <p className="text-[11px] font-medium text-emerald-300">
+                    <p className="text-[11px] font-medium text-ministry-300">
                       1st Anniversary · Nov 2026
                     </p>
                     <p className="font-display text-sm font-bold text-white leading-snug truncate">
@@ -479,7 +496,7 @@ export function MinistriesPage() {
                       href={YOUTUBE_CHANNEL_SEARCH_URL}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 pt-1 text-xs font-semibold text-white hover:text-emerald-300 transition-colors"
+                      className="inline-flex items-center gap-1.5 pt-1 text-xs font-semibold text-white hover:text-ministry-300 transition-colors"
                     >
                       <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
                       <span>Watch on YouTube</span>
@@ -535,21 +552,31 @@ export function MinistriesPage() {
             className="flex gap-4 sm:gap-5 overflow-x-auto pb-2 snap-x snap-mandatory scroll-smooth"
           >
             {GATHERING_CARDS.map((card) => {
-              const cardContent = (
+              const cardContent = card.isFlyerGraphic ? (
+                <article className="relative h-[380px] sm:h-[420px] w-[280px] sm:w-[300px] shrink-0 snap-start rounded-2xl overflow-hidden border border-white/15 bg-[#121316] group">
+                  <SafePhoto
+                    src={card.image}
+                    alt={card.alt}
+                    lazy
+                    className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.02]"
+                    fallbackTitle={card.title}
+                  />
+                </article>
+              ) : (
                 <article className="relative h-[380px] sm:h-[420px] w-[260px] sm:w-[272px] shrink-0 snap-start rounded-2xl overflow-hidden border border-white/10 bg-slate-900 group">
                   <SafePhoto
                     src={card.image}
                     alt={card.alt}
                     lazy
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                    className="h-full w-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.03]"
                     fallbackTitle={card.title}
                   />
                   <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/95 via-black/45 to-black/15"
+                    className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#04061a]/95 via-[#0b114d]/55 to-black/15"
                   />
                   <div className="absolute inset-x-0 bottom-0 p-5 space-y-2 text-left">
-                    <p className="text-[11px] font-medium text-emerald-300">
+                    <p className="text-[11px] font-medium text-ministry-300">
                       {card.kicker}
                     </p>
                     <h3 className="font-display text-2xl font-bold text-white leading-tight">
@@ -612,19 +639,19 @@ export function MinistriesPage() {
           className="relative overflow-hidden border-t border-white/10 min-h-[440px] sm:min-h-[500px] flex items-center"
         >
           <SafePhoto
-            src={OUTREACH_IMAGE}
-            alt="Nigerian students studying together for JAMB UTME and UI Post-UTME"
+            src={CAMPUS_STUDENTS_IMAGE}
+            alt="University of Ibadan students smiling together inside Queen Elizabeth Hall"
             lazy
-            className="absolute inset-0 h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover object-[50%_28%]"
             fallbackTitle="Phosters Academy"
           />
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/80 via-black/65 to-black/85"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#04061c]/88 via-[#0f1769]/70 to-[#04061c]/90"
           />
 
           <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-8 py-16 sm:py-24 text-center space-y-6">
-            <div className="flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm text-emerald-200 font-medium">
+            <div className="flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm text-ministry-200 font-medium">
               <span>Educational Outreach</span>
               <span aria-hidden="true">·</span>
               <span>JAMB UTME &amp; UI Post-UTME</span>
@@ -639,14 +666,14 @@ export function MinistriesPage() {
               Are you a University of Ibadan aspirant or schooling in Ibadan?
             </h2>
 
-            <p className="text-base sm:text-lg text-slate-200 max-w-2xl mx-auto leading-relaxed">
+            <p className="text-base sm:text-lg text-slate-100/90 max-w-2xl mx-auto leading-relaxed">
               Phosters Academy is free for you—offering structured video lectures, downloadable notes, and instant CBT practice tests with zero tuition fees and no membership requirement.
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
               <Link
                 to={academyHref}
-                className="inline-flex items-center justify-center gap-2 min-h-[48px] px-7 py-3 rounded-lg bg-white text-slate-950 text-sm sm:text-base font-semibold hover:bg-emerald-50 transition-colors whitespace-nowrap shrink-0"
+                className="inline-flex items-center justify-center gap-2 min-h-[48px] px-7 py-3 rounded-lg bg-white text-slate-950 text-sm sm:text-base font-semibold hover:bg-ministry-50 transition-colors whitespace-nowrap shrink-0"
               >
                 <span>{user ? 'Open Phosters Academy' : 'Start Free on Phosters Academy'}</span>
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -689,7 +716,7 @@ export function MinistriesPage() {
                       className={[
                         'text-left font-display text-3xl sm:text-5xl font-bold tracking-tight leading-[1.12] transition-colors cursor-pointer py-0.5',
                         isActive
-                          ? 'text-slate-950 dark:text-white underline decoration-phosters-600 decoration-2 underline-offset-8'
+                          ? 'text-slate-950 dark:text-white underline decoration-ministry-600 dark:decoration-ministry-400 decoration-2 underline-offset-8'
                           : 'text-slate-300 dark:text-slate-700 hover:text-slate-600 dark:hover:text-slate-400',
                       ].join(' ')}
                     >
@@ -700,7 +727,7 @@ export function MinistriesPage() {
               </div>
 
               <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
-                <p className="text-xs font-medium text-phosters-700 dark:text-phosters-400">
+                <p className="text-xs font-medium text-ministry-600 dark:text-ministry-400">
                   {activePillar.scriptureRef} · {activePillar.scheduleNote}
                 </p>
                 <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
@@ -710,12 +737,13 @@ export function MinistriesPage() {
             </div>
 
             <div className="lg:col-span-7 space-y-5">
-              <div className="relative aspect-[4/3] w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900">
+              <div className="relative aspect-[3/4] sm:aspect-[4/5] max-w-lg mx-auto lg:mx-0 w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900">
                 <SafePhoto
+                  key={activePillar.id}
                   src={activePillar.image}
                   alt={activePillar.alt}
                   lazy
-                  className="h-full w-full object-cover"
+                  className="h-full w-full object-cover object-top"
                   fallbackTitle={activePillar.label}
                 />
               </div>
@@ -752,7 +780,17 @@ export function MinistriesPage() {
         >
           <div className="max-w-7xl mx-auto px-4 sm:px-8 py-14 sm:py-20 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12">
             <div className="lg:col-span-5 space-y-5">
-              <p className="text-xs font-medium text-phosters-700 dark:text-phosters-400">
+              <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 aspect-[16/7] bg-ministry-900">
+                <SafePhoto
+                  src={OFFICIAL_MINISTRY_BANNER}
+                  alt="The Phosters Ministries official emblem and wordmark banner"
+                  lazy
+                  className="h-full w-full object-cover"
+                  fallbackTitle="The Phosters Ministries"
+                />
+              </div>
+
+              <p className="text-xs font-medium text-ministry-600 dark:text-ministry-400">
                 Worship &amp; Connect
               </p>
               <h2
@@ -767,8 +805,14 @@ export function MinistriesPage() {
 
               <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3 text-sm">
                 <div className="flex items-start justify-between gap-4 py-1">
+                  <span className="text-slate-500 dark:text-slate-400 shrink-0">Pastors</span>
+                  <span className="font-medium text-slate-900 dark:text-slate-100 text-right">
+                    Pastor Kunle &amp; Pastor Mrs Treasure Heben
+                  </span>
+                </div>
+                <div className="flex items-start justify-between gap-4 py-1">
                   <span className="inline-flex items-center gap-1.5 text-slate-500 dark:text-slate-400 shrink-0">
-                    <MapPin className="h-4 w-4 text-phosters-600 dark:text-phosters-400" aria-hidden="true" />
+                    <MapPin className="h-4 w-4 text-ministry-600 dark:text-ministry-400" aria-hidden="true" />
                     <span>Venue</span>
                   </span>
                   <span className="font-medium text-slate-900 dark:text-slate-100 text-right">
@@ -785,7 +829,7 @@ export function MinistriesPage() {
                   <span className="text-slate-500 dark:text-slate-400">Ministry Desk</span>
                   <a
                     href={`mailto:${LEGAL_CONTACT_EMAIL}`}
-                    className="font-medium text-phosters-700 dark:text-phosters-400 hover:underline"
+                    className="font-medium text-ministry-600 dark:text-ministry-400 hover:underline"
                   >
                     {LEGAL_CONTACT_EMAIL}
                   </a>
@@ -796,7 +840,7 @@ export function MinistriesPage() {
                     href={YOUTUBE_CHANNEL_SEARCH_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-medium text-phosters-700 dark:text-phosters-400 hover:underline"
+                    className="inline-flex items-center gap-1 font-medium text-ministry-600 dark:text-ministry-400 hover:underline"
                   >
                     <span>The Phosters Ministries</span>
                     <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
@@ -811,7 +855,7 @@ export function MinistriesPage() {
                   <div className="space-y-5">
                     <div className="flex items-start gap-3">
                       <CheckCircle2
-                        className="h-6 w-6 text-phosters-600 dark:text-phosters-400 shrink-0 mt-0.5"
+                        className="h-6 w-6 text-ministry-600 dark:text-ministry-400 shrink-0 mt-0.5"
                         aria-hidden="true"
                       />
                       <div className="space-y-1">
@@ -850,7 +894,7 @@ export function MinistriesPage() {
                     <div className="flex flex-wrap items-center gap-3">
                       <a
                         href={buildMailtoHref()}
-                        className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-lg bg-phosters-600 text-white text-sm font-semibold hover:bg-phosters-700 transition-colors whitespace-nowrap shrink-0"
+                        className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-lg bg-ministry-600 text-white text-sm font-semibold hover:bg-ministry-700 transition-colors whitespace-nowrap shrink-0"
                       >
                         <Mail className="h-4 w-4" aria-hidden="true" />
                         <span>Send via Email App</span>
@@ -884,7 +928,7 @@ export function MinistriesPage() {
                               className={[
                                 'text-left px-3.5 py-2.5 min-h-[44px] rounded-lg border text-xs sm:text-sm font-medium transition-colors cursor-pointer',
                                 active
-                                  ? 'border-phosters-600 bg-phosters-50 dark:bg-phosters-900/40 text-phosters-800 dark:text-phosters-300'
+                                  ? 'border-ministry-600 bg-ministry-50 dark:bg-ministry-900/40 text-ministry-800 dark:text-ministry-200'
                                   : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700',
                               ].join(' ')}
                             >
@@ -913,7 +957,7 @@ export function MinistriesPage() {
                           onChange={(e) => setFullName(e.target.value)}
                           placeholder="e.g. Toluwani Adeyemi"
                           required
-                          className="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-phosters-600"
+                          className="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-ministry-600"
                         />
                       </div>
 
@@ -931,7 +975,7 @@ export function MinistriesPage() {
                           onChange={(e) => setContact(e.target.value)}
                           placeholder="you@example.com or 080..."
                           required
-                          className="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-phosters-600"
+                          className="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-ministry-600"
                         />
                       </div>
                     </div>
@@ -949,7 +993,7 @@ export function MinistriesPage() {
                         value={message}
                         onChange={(e) => setMessage(e.target.value)}
                         placeholder="Tell us which Sunday or Tuesday service you are visiting, or share a prayer point..."
-                        className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-phosters-600"
+                        className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-ministry-600"
                       />
                     </div>
 
@@ -965,7 +1009,7 @@ export function MinistriesPage() {
                       </p>
                       <button
                         type="submit"
-                        className="inline-flex items-center justify-center min-h-[44px] px-6 py-2.5 rounded-lg bg-phosters-600 text-white text-sm font-semibold hover:bg-phosters-700 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                        className="inline-flex items-center justify-center min-h-[44px] px-6 py-2.5 rounded-lg bg-ministry-600 text-white text-sm font-semibold hover:bg-ministry-700 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                       >
                         Prepare Ministry Note
                       </button>
