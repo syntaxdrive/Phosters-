@@ -1,6 +1,9 @@
 import { useState } from 'react';
-import { Bell, BellOff, BellRing, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Bell, BellOff, BellRing, Send, X } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { triggerPushNotification } from '../../services/pushService';
 import { Alert } from '../ui/Alert';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -12,6 +15,9 @@ interface PushNotificationSettingsProps {
 const DISMISS_STORAGE_KEY = 'phosters_push_banner_dismissed';
 
 export function PushNotificationSettings({ variant }: PushNotificationSettingsProps) {
+  const { user, profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
+
   const {
     isSupported,
     isConfigured,
@@ -24,6 +30,7 @@ export function PushNotificationSettings({ variant }: PushNotificationSettingsPr
     error,
     enablePush,
     disablePush,
+    sendDevicePreviewNotification,
     updatePreferences,
   } = usePushNotifications();
 
@@ -35,6 +42,8 @@ export function PushNotificationSettings({ variant }: PushNotificationSettingsPr
     }
   });
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [testingDevice, setTestingDevice] = useState(false);
+  const [testingServerPush, setTestingServerPush] = useState(false);
 
   function handleDismissBanner() {
     setDismissed(true);
@@ -60,6 +69,38 @@ export function PushNotificationSettings({ variant }: PushNotificationSettingsPr
     const ok = await disablePush();
     if (ok) {
       setStatusMessage('Push notifications turned off for this device.');
+    }
+  }
+
+  async function handleDevicePreview() {
+    setStatusMessage(null);
+    setTestingDevice(true);
+    const ok = await sendDevicePreviewNotification();
+    setTestingDevice(false);
+    if (ok) {
+      setStatusMessage('Device notification preview sent. Check your notification shade.');
+    }
+  }
+
+  async function handleServerSelfPush() {
+    if (!user) return;
+    setStatusMessage(null);
+    setTestingServerPush(true);
+    const res = await triggerPushNotification({
+      type: 'custom',
+      title: 'Phosters Live Push Check',
+      body: 'Background Web Push delivery is active on this device.',
+      targetUrl: '/settings',
+      studentIds: [user.id],
+      preferenceCategory: 'broadcasts',
+    });
+    setTestingServerPush(false);
+    if (res.error) {
+      setStatusMessage(`Server push error: ${res.error}`);
+      return;
+    }
+    if (res.result) {
+      setStatusMessage(res.result.message);
     }
   }
 
@@ -193,14 +234,51 @@ export function PushNotificationSettings({ variant }: PushNotificationSettingsPr
           This browser does not support Web Push notifications. Open Phosters in Chrome, Edge, or Safari (installed on Home Screen) to enable alerts.
         </Alert>
       ) : !isConfigured ? (
-        <Alert tone="info">
-          Push notifications will become available once the administrator configures the VAPID public key.
+        <Alert tone="info" title="Background push keys pending">
+          {isAdmin ? (
+            <span>
+              Add your Web Push VAPID keys in environment settings to unlock background alerts. You can generate a fresh keypair in{' '}
+              <Link
+                to="/admin/announcements"
+                className="font-semibold text-phosters-700 dark:text-phosters-400 underline"
+              >
+                Announcements &amp; Broadcasts
+              </Link>
+              —no Supabase service role key needed for admin delivery.
+            </span>
+          ) : (
+            'Background push alerts will become available automatically once server VAPID keys are configured.'
+          )}
         </Alert>
       ) : permission === 'denied' && !isSubscribed ? (
         <Alert tone="warning" title="Notifications blocked in browser settings">
           Allow notifications for Phosters in your browser or device site settings, then reload and tap Enable Notifications.
         </Alert>
       ) : null}
+
+      {isSupported && !needsIOSInstall && permission !== 'denied' && (isSubscribed || isAdmin) && (
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <Button
+            variant="secondary"
+            onClick={() => void handleDevicePreview()}
+            loading={testingDevice}
+          >
+            <Bell className="h-4 w-4" aria-hidden="true" />
+            <span>Preview Device Notification</span>
+          </Button>
+
+          {isAdmin && isSubscribed && isConfigured && (
+            <Button
+              variant="secondary"
+              onClick={() => void handleServerSelfPush()}
+              loading={testingServerPush}
+            >
+              <Send className="h-4 w-4" aria-hidden="true" />
+              <span>Send Live Server Push Test</span>
+            </Button>
+          )}
+        </div>
+      )}
 
       {isSubscribed && (
         <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">

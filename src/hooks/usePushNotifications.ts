@@ -7,6 +7,7 @@ import {
   isIOSDevice,
   isPushSupportedInBrowser,
   isStandalonePWA,
+  resolveVapidPublicKey,
   updateDevicePushPreferences,
   upsertDevicePushSubscription,
   urlBase64ToUint8Array,
@@ -22,7 +23,7 @@ const DEFAULT_PREFERENCES: PushPreferences = {
 
 export function usePushNotifications() {
   const { user } = useAuth();
-  const vapidPublicKey = getVapidPublicKey();
+  const [vapidPublicKey, setVapidPublicKey] = useState<string>(() => getVapidPublicKey());
   const isSupported = isPushSupportedInBrowser();
   const isIOS = isIOSDevice();
   const isStandalone = isStandalonePWA();
@@ -38,15 +39,19 @@ export function usePushNotifications() {
   const [error, setError] = useState<string | null>(null);
 
   const syncCurrentSubscription = useCallback(async () => {
-    if (!isSupported || !user) {
-      setIsSubscribed(false);
-      setSubscription(null);
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     try {
+      const resolvedKey = await resolveVapidPublicKey();
+      if (resolvedKey) {
+        setVapidPublicKey(resolvedKey);
+      }
+
+      if (!isSupported || !user) {
+        setIsSubscribed(false);
+        setSubscription(null);
+        return;
+      }
+
       setPermission(Notification.permission);
       const registration = await navigator.serviceWorker.ready;
       const existing = await registration.pushManager.getSubscription();
@@ -85,9 +90,15 @@ export function usePushNotifications() {
       setError('Push notifications are not supported in this browser.');
       return false;
     }
-    if (!vapidPublicKey) {
+
+    const activeVapidKey = vapidPublicKey || (await resolveVapidPublicKey());
+    if (activeVapidKey && !vapidPublicKey) {
+      setVapidPublicKey(activeVapidKey);
+    }
+
+    if (!activeVapidKey) {
       setError(
-        'Push notifications are not configured yet (missing VITE_VAPID_PUBLIC_KEY).'
+        'Web Push keys are not configured on the server yet. An administrator needs to add VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY.'
       );
       return false;
     }
@@ -112,7 +123,7 @@ export function usePushNotifications() {
       if (!sub) {
         sub = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+          applicationServerKey: urlBase64ToUint8Array(activeVapidKey),
         });
       }
 
@@ -166,6 +177,45 @@ export function usePushNotifications() {
     }
   }, [user, subscription]);
 
+  const sendDevicePreviewNotification = useCallback(async (): Promise<boolean> => {
+    if (!isSupported) {
+      setError('Native browser notifications are not supported in this browser.');
+      return false;
+    }
+
+    setError(null);
+    try {
+      let currentPerm = Notification.permission;
+      if (currentPerm === 'default') {
+        currentPerm = await Notification.requestPermission();
+        setPermission(currentPerm);
+      }
+      if (currentPerm !== 'granted') {
+        setError(
+          'Notification permission is required to preview native alerts on this device.'
+        );
+        return false;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification('Phosters Test Alert', {
+        body: 'Native notifications are active on this device.',
+        icon: '/pwa-192x192.png',
+        badge: '/favicon-32x32.png',
+        tag: 'phosters-device-preview',
+        data: { url: '/settings' },
+      });
+      return true;
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not display a native notification on this device.'
+      );
+      return false;
+    }
+  }, [isSupported]);
+
   const updatePreferences = useCallback(
     async (patch: Partial<PushPreferences>) => {
       const next = { ...preferences, ...patch };
@@ -198,6 +248,7 @@ export function usePushNotifications() {
     error,
     enablePush,
     disablePush,
+    sendDevicePreviewNotification,
     updatePreferences,
   };
 }

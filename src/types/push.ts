@@ -7,11 +7,26 @@ export interface PushPreferences {
   notify_reminders: boolean;
 }
 
+export type PushAuthMode = 'service_role' | 'admin_jwt' | 'none';
+
 export interface PushServerStatus {
   configured: boolean;
+  authMode: PushAuthMode;
+  supabaseUrlConfigured: boolean;
+  anonKeyConfigured: boolean;
   vapidPublicKeyConfigured: boolean;
   vapidPrivateKeyConfigured: boolean;
   serviceRoleConfigured: boolean;
+  cronSecretConfigured: boolean;
+}
+
+export interface GeneratedVapidKeypair {
+  publicKey: string;
+  privateKey: string;
+}
+
+export interface PublicPushConfig {
+  vapidPublicKey: string;
 }
 
 export type SendPushPayload =

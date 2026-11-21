@@ -5,6 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import {
+  generateFreshVapidKeypair,
+  getPublicPushConfig,
   getPushServerStatus,
   runInactivityAndTestReminders,
   sendTargetedPushNotifications,
@@ -21,6 +23,10 @@ async function createServer() {
   const httpServer = http.createServer(app);
   app.use(express.json({ limit: '1mb' }));
 
+  app.get('/api/push/config', (_req, res) => {
+    res.status(200).json(getPublicPushConfig());
+  });
+
   app.get('/api/push/status', async (req, res) => {
     try {
       const authCheck = await verifyAdminAuthorization(req.headers.authorization);
@@ -33,6 +39,22 @@ async function createServer() {
       console.error('Express /api/push/status error:', err);
       res.status(500).json({
         error: err instanceof Error ? err.message : 'Unexpected push status error.',
+      });
+    }
+  });
+
+  app.post('/api/push/generate-vapid', async (req, res) => {
+    try {
+      const authCheck = await verifyAdminAuthorization(req.headers.authorization);
+      if (!authCheck.ok) {
+        res.status(authCheck.status).json({ error: authCheck.error });
+        return;
+      }
+      res.status(200).json(generateFreshVapidKeypair());
+    } catch (err) {
+      console.error('Express /api/push/generate-vapid error:', err);
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Unexpected VAPID generation error.',
       });
     }
   });
@@ -51,7 +73,11 @@ async function createServer() {
         return;
       }
 
-      const result = await sendTargetedPushNotifications(payload, authCheck.userId);
+      const result = await sendTargetedPushNotifications(
+        payload,
+        authCheck.userId,
+        authCheck.client
+      );
       res.status(result.status).json(result.body);
     } catch (err) {
       console.error('Express /api/push/send error:', err);
@@ -81,7 +107,9 @@ async function createServer() {
 
       const result = await runInactivityAndTestReminders(
         input,
-        authCheck.triggeredByUserId
+        authCheck.triggeredByUserId,
+        authCheck.client,
+        Boolean(authCheck.usingServiceRole)
       );
       res.status(result.status).json(result.body);
     } catch (err) {

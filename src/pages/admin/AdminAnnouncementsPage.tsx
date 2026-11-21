@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { BellRing, ExternalLink, Pin, Plus, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { BellRing, CheckCircle2, Copy, ExternalLink, KeyRound, Pin, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { isSafeExternalHttpUrl } from '../../lib/materialLinks';
 import {
@@ -10,6 +11,7 @@ import {
 } from '../../services/announcementService';
 import {
   fetchPushServerStatus,
+  generateVapidKeys,
   triggerPushNotification,
 } from '../../services/pushService';
 import type {
@@ -17,7 +19,7 @@ import type {
   AnnouncementLinkDraft,
 } from '../../types/announcement';
 import type { AnnouncementAudienceType, Exam, Subject } from '../../types/database';
-import type { PushServerStatus } from '../../types/push';
+import type { GeneratedVapidKeypair, PushServerStatus } from '../../types/push';
 import { AdminNav } from '../../components/admin/AdminNav';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
@@ -57,6 +59,10 @@ export function AdminAnnouncementsPage() {
   const [pushingId, setPushingId] = useState<string | null>(null);
   const [pushStatus, setPushStatus] = useState<PushServerStatus | null>(null);
   const [pushStatusError, setPushStatusError] = useState<string | null>(null);
+  const [generatedKeys, setGeneratedKeys] = useState<GeneratedVapidKeypair | null>(null);
+  const [generatingKeys, setGeneratingKeys] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [testingSelfPush, setTestingSelfPush] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -238,6 +244,55 @@ export function AdminAnnouncementsPage() {
     await loadData();
   }
 
+  async function handleGenerateVapidKeys() {
+    setFormError(null);
+    setGeneratingKeys(true);
+    const res = await generateVapidKeys();
+    setGeneratingKeys(false);
+    if (res.error || !res.keypair) {
+      setFormError(res.error || 'Could not generate VAPID keys.');
+      return;
+    }
+    setGeneratedKeys(res.keypair);
+  }
+
+  async function handleCopyEnv(label: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(label);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch {
+      setFormError('Clipboard access was denied. Copy the key values manually.');
+    }
+  }
+
+  async function handleSendTestSelfPush() {
+    if (!user) return;
+    setFormError(null);
+    setFormSuccess(null);
+    setTestingSelfPush(true);
+    const res = await triggerPushNotification({
+      type: 'custom',
+      title: 'Phosters Native Notification Test',
+      body: 'Your admin push delivery pipeline is working.',
+      targetUrl: '/admin/announcements',
+      studentIds: [user.id],
+      preferenceCategory: 'broadcasts',
+    });
+    setTestingSelfPush(false);
+    if (res.error) {
+      setFormError(res.error);
+      return;
+    }
+    if (res.result) {
+      setFormSuccess(
+        res.result.recipientsCount === 0
+          ? 'No push subscription saved for your device yet. Visit Settings to tap Enable Notifications first.'
+          : res.result.message
+      );
+    }
+  }
+
   if (loading) return <LoadingState message="Loading announcements..." />;
   if (error) return <ErrorState message={error} onRetry={() => void loadData()} />;
 
@@ -255,27 +310,152 @@ export function AdminAnnouncementsPage() {
       <AdminNav />
 
       {pushStatusError && (
-        <Alert tone="warning" title="Push notification service unreachable">
+        <Alert tone="warning" title="Push notification service check failed">
           {pushStatusError}
         </Alert>
       )}
 
+      {!pushStatusError && pushStatus && pushStatus.configured && (
+        <Card padding="md" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="h-5 w-5 text-phosters-600 dark:text-phosters-400 shrink-0 mt-0.5" aria-hidden="true" />
+            <div className="space-y-0.5">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                Native Push Notifications Ready
+              </p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                Connected via{' '}
+                {pushStatus.authMode === 'service_role'
+                  ? 'Supabase Service Role Key (supports both Admin sends & daily cron reminders)'
+                  : 'Admin Session + Project API Key (no Service Role Key required for Admin sends)'}
+                .
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Button
+              variant="secondary"
+              loading={testingSelfPush}
+              onClick={() => void handleSendTestSelfPush()}
+            >
+              <BellRing className="h-4 w-4" aria-hidden="true" />
+              <span>Test Push on My Device</span>
+            </Button>
+            <Link
+              to="/settings"
+              className="text-xs font-semibold text-phosters-700 dark:text-phosters-400 hover:underline px-2 py-1"
+            >
+              Device Settings
+            </Link>
+          </div>
+        </Card>
+      )}
+
       {!pushStatusError && pushStatus && !pushStatus.configured && (
-        <Alert tone="info" title="Native push notifications not yet configured on server">
-          Broadcasts will appear inside the app immediately. To also trigger lock-screen phone notifications, configure{' '}
-          <code className="font-mono text-xs bg-white/80 dark:bg-slate-800/80 px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-            VITE_VAPID_PUBLIC_KEY
-          </code>
-          ,{' '}
-          <code className="font-mono text-xs bg-white/80 dark:bg-slate-800/80 px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-            VAPID_PRIVATE_KEY
-          </code>
-          , and{' '}
-          <code className="font-mono text-xs bg-white/80 dark:bg-slate-800/80 px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-            SUPABASE_SERVICE_ROLE_KEY
-          </code>
-          .
-        </Alert>
+        <Card padding="lg" className="space-y-4 border-phosters-200 dark:border-phosters-800">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <div className="space-y-1">
+              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                Finish Native Push Notification Setup
+              </h2>
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                Broadcasts appear inside the app immediately. To trigger lock-screen phone notifications, add a Web Push{' '}
+                <strong>VAPID keypair</strong> to your server environment variables—your existing Supabase Project URL &amp; Project API Key already handle Admin delivery without requiring a Supabase Service Role Key.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              loading={generatingKeys}
+              onClick={() => void handleGenerateVapidKeys()}
+              className="shrink-0"
+            >
+              <KeyRound className="h-4 w-4" aria-hidden="true" />
+              <span>Generate VAPID Keys</span>
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
+            {[
+              {
+                label: 'Supabase URL',
+                ok: pushStatus.supabaseUrlConfigured,
+                note: 'VITE_SUPABASE_URL',
+              },
+              {
+                label: 'Project API Auth',
+                ok: pushStatus.authMode !== 'none',
+                note:
+                  pushStatus.authMode === 'service_role'
+                    ? 'Service role active'
+                    : 'VITE_SUPABASE_ANON_KEY',
+              },
+              {
+                label: 'VAPID Public Key',
+                ok: pushStatus.vapidPublicKeyConfigured,
+                note: 'VAPID_PUBLIC_KEY',
+              },
+              {
+                label: 'VAPID Private Key',
+                ok: pushStatus.vapidPrivateKeyConfigured,
+                note: 'VAPID_PRIVATE_KEY',
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 px-3 py-2.5 space-y-0.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {item.label}
+                  </span>
+                  <span
+                    className={
+                      item.ok
+                        ? 'font-semibold text-phosters-700 dark:text-phosters-400'
+                        : 'font-semibold text-amber-700 dark:text-amber-400'
+                    }
+                  >
+                    {item.ok ? 'Ready' : 'Missing'}
+                  </span>
+                </div>
+                <p className="font-mono text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  {item.note}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {generatedKeys && (
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-950 text-slate-100 p-4 space-y-3 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-semibold text-white">
+                  Fresh VAPID Keys Ready — add these to your Environment Variables / Secrets, then restart or redeploy:
+                </p>
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    void handleCopyEnv(
+                      'all',
+                      `VITE_VAPID_PUBLIC_KEY=${generatedKeys.publicKey}\nVAPID_PUBLIC_KEY=${generatedKeys.publicKey}\nVAPID_PRIVATE_KEY=${generatedKeys.privateKey}`
+                    )
+                  }
+                >
+                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{copiedField === 'all' ? 'Copied All' : 'Copy All Lines'}</span>
+                </Button>
+              </div>
+              <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed text-slate-200 select-all">
+{`VITE_VAPID_PUBLIC_KEY=${generatedKeys.publicKey}
+VAPID_PUBLIC_KEY=${generatedKeys.publicKey}
+VAPID_PRIVATE_KEY=${generatedKeys.privateKey}`}
+              </pre>
+              <p className="text-[11px] text-slate-400">
+                Optional: Only add <code className="text-slate-200">SUPABASE_SERVICE_ROLE_KEY</code> if you want unattended daily Vercel Cron inactivity reminders—manual pushes from Announcements, Lessons, Tests, and Students already work with your Project API Key.
+              </p>
+            </div>
+          )}
+        </Card>
       )}
 
       {formError && <Alert tone="error">{formError}</Alert>}

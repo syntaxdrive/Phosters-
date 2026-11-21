@@ -1,5 +1,7 @@
 import { supabase } from '../lib/supabase';
 import type {
+  GeneratedVapidKeypair,
+  PublicPushConfig,
   PushPreferences,
   PushServerStatus,
   RemindInactiveInput,
@@ -8,10 +10,30 @@ import type {
   SendPushResponse,
 } from '../types/push';
 
+let cachedServerVapidKey: string | null = null;
+
 export function getVapidPublicKey(): string {
-  return (
-    (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined)?.trim() ?? ''
-  );
+  const buildKey =
+    (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined)?.trim() ?? '';
+  return buildKey || cachedServerVapidKey || '';
+}
+
+export async function resolveVapidPublicKey(): Promise<string> {
+  const immediate = getVapidPublicKey();
+  if (immediate) return immediate;
+
+  try {
+    const res = await fetch('/api/push/config', { method: 'GET' });
+    if (!res.ok) return '';
+    const parsed = (await res.json()) as Partial<PublicPushConfig>;
+    const key = typeof parsed.vapidPublicKey === 'string' ? parsed.vapidPublicKey.trim() : '';
+    if (key) {
+      cachedServerVapidKey = key;
+    }
+    return key;
+  } catch {
+    return '';
+  }
 }
 
 export function isPushSupportedInBrowser(): boolean {
@@ -290,6 +312,36 @@ export async function triggerInactivityReminders(
     return {
       result: null,
       error: `Unable to reach push reminder service${detail}.`,
+    };
+  }
+}
+
+export async function generateVapidKeys(): Promise<{
+  keypair: GeneratedVapidKeypair | null;
+  error: string | null;
+}> {
+  const token = await getAccessToken();
+  if (!token) {
+    return { keypair: null, error: 'You must be signed in as an administrator.' };
+  }
+
+  try {
+    const res = await fetch('/api/push/generate-vapid', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const parsed = await parsePushApiResponse<GeneratedVapidKeypair>(
+      res,
+      'Could not generate VAPID keys.'
+    );
+    return { keypair: parsed.data, error: parsed.error };
+  } catch (err) {
+    const detail = err instanceof Error && err.message ? ` (${err.message})` : '';
+    return {
+      keypair: null,
+      error: `Unable to reach VAPID key generator${detail}.`,
     };
   }
 }

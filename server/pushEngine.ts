@@ -1,8 +1,11 @@
 import crypto from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { sendNotification, setVapidDetails } from 'web-push';
+import { generateVAPIDKeys, sendNotification, setVapidDetails } from 'web-push';
 import type { Database, PushNotificationType, PushSubscriptionRecord } from '../src/types/database';
 import type {
+  GeneratedVapidKeypair,
+  PublicPushConfig,
+  PushAuthMode,
   PushServerStatus,
   RemindInactiveInput,
   RemindInactiveResponse,
@@ -14,6 +17,11 @@ function getServerEnv() {
   const supabaseUrl = (
     process.env.SUPABASE_URL ||
     process.env.VITE_SUPABASE_URL ||
+    ''
+  ).trim();
+  const supabaseAnonKey = (
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY ||
     ''
   ).trim();
   const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
@@ -32,6 +40,7 @@ function getServerEnv() {
 
   return {
     supabaseUrl,
+    supabaseAnonKey,
     serviceRoleKey,
     vapidPublicKey,
     vapidPrivateKey,
@@ -40,22 +49,46 @@ function getServerEnv() {
   };
 }
 
-export function getPushServerStatus(): PushServerStatus {
+export function getPublicPushConfig(): PublicPushConfig {
   const env = getServerEnv();
-  const vapidPublicKeyConfigured = Boolean(env.vapidPublicKey);
-  const vapidPrivateKeyConfigured = Boolean(env.vapidPrivateKey);
-  const serviceRoleConfigured = Boolean(env.supabaseUrl && env.serviceRoleKey);
-
   return {
-    configured:
-      vapidPublicKeyConfigured && vapidPrivateKeyConfigured && serviceRoleConfigured,
-    vapidPublicKeyConfigured,
-    vapidPrivateKeyConfigured,
-    serviceRoleConfigured,
+    vapidPublicKey: env.vapidPublicKey,
   };
 }
 
-function getAdminSupabaseClient(): {
+export function generateFreshVapidKeypair(): GeneratedVapidKeypair {
+  return generateVAPIDKeys();
+}
+
+export function getPushServerStatus(): PushServerStatus {
+  const env = getServerEnv();
+  const supabaseUrlConfigured = Boolean(env.supabaseUrl);
+  const anonKeyConfigured = Boolean(env.supabaseAnonKey);
+  const vapidPublicKeyConfigured = Boolean(env.vapidPublicKey);
+  const vapidPrivateKeyConfigured = Boolean(env.vapidPrivateKey);
+  const serviceRoleConfigured = Boolean(env.supabaseUrl && env.serviceRoleKey);
+  const cronSecretConfigured = Boolean(env.cronSecret);
+
+  const authMode: PushAuthMode = serviceRoleConfigured
+    ? 'service_role'
+    : supabaseUrlConfigured && anonKeyConfigured
+      ? 'admin_jwt'
+      : 'none';
+
+  return {
+    configured:
+      vapidPublicKeyConfigured && vapidPrivateKeyConfigured && authMode !== 'none',
+    authMode,
+    supabaseUrlConfigured,
+    anonKeyConfigured,
+    vapidPublicKeyConfigured,
+    vapidPrivateKeyConfigured,
+    serviceRoleConfigured,
+    cronSecretConfigured,
+  };
+}
+
+function getServiceRoleSupabaseClient(): {
   client: SupabaseClient<Database> | null;
   error: string | null;
 } {
@@ -64,7 +97,7 @@ function getAdminSupabaseClient(): {
     return {
       client: null,
       error:
-        'Server push delivery requires SUPABASE_URL (or VITE_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY.',
+        'Unattended push delivery requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.',
     };
   }
 
@@ -78,13 +111,42 @@ function getAdminSupabaseClient(): {
   return { client, error: null };
 }
 
+function getUserScopedSupabaseClient(accessToken: string): {
+  client: SupabaseClient<Database> | null;
+  error: string | null;
+} {
+  const env = getServerEnv();
+  if (!env.supabaseUrl || (!env.supabaseAnonKey && !env.serviceRoleKey)) {
+    return {
+      client: null,
+      error:
+        'Server push delivery requires SUPABASE_URL (or VITE_SUPABASE_URL) and SUPABASE_ANON_KEY (or VITE_SUPABASE_ANON_KEY).',
+    };
+  }
+
+  const apiKey = env.serviceRoleKey || env.supabaseAnonKey;
+  const client = createClient<Database>(env.supabaseUrl, apiKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
+
+  return { client, error: null };
+}
+
 function ensureWebPushConfigured(): { ok: boolean; error?: string } {
   const env = getServerEnv();
   if (!env.vapidPublicKey || !env.vapidPrivateKey) {
     return {
       ok: false,
       error:
-        'Web Push VAPID keys are not configured. Set VITE_VAPID_PUBLIC_KEY (or VAPID_PUBLIC_KEY) and VAPID_PRIVATE_KEY on the server.',
+        'Web Push VAPID keys are not configured. Set VAPID_PUBLIC_KEY (or VITE_VAPID_PUBLIC_KEY) and VAPID_PRIVATE_KEY on the server.',
     };
   }
 
@@ -121,6 +183,8 @@ export async function verifyAdminAuthorization(authorizationHeader: string | und
   ok: boolean;
   status: number;
   userId?: string;
+  client?: SupabaseClient<Database>;
+  usingServiceRole?: boolean;
   error?: string;
 }> {
   const token = extractBearerToken(authorizationHeader);
@@ -128,11 +192,17 @@ export async function verifyAdminAuthorization(authorizationHeader: string | und
     return { ok: false, status: 401, error: 'Missing Authorization Bearer token.' };
   }
 
-  const { client, error } = getAdminSupabaseClient();
-  if (!client) {
-    return { ok: false, status: 503, error: error || 'Server not configured.' };
+  const env = getServerEnv();
+  const serviceRes = env.serviceRoleKey ? getServiceRoleSupabaseClient() : null;
+  const scopedRes = serviceRes?.client
+    ? serviceRes
+    : getUserScopedSupabaseClient(token);
+
+  if (!scopedRes.client) {
+    return { ok: false, status: 503, error: scopedRes.error || 'Server not configured.' };
   }
 
+  const client = scopedRes.client;
   const { data: userData, error: authErr } = await client.auth.getUser(token);
   if (authErr || !userData.user) {
     return { ok: false, status: 401, error: 'Invalid or expired session token.' };
@@ -148,7 +218,13 @@ export async function verifyAdminAuthorization(authorizationHeader: string | und
     return { ok: false, status: 403, error: 'Administrator access required.' };
   }
 
-  return { ok: true, status: 200, userId: userData.user.id };
+  return {
+    ok: true,
+    status: 200,
+    userId: userData.user.id,
+    client,
+    usingServiceRole: Boolean(serviceRes?.client),
+  };
 }
 
 export async function verifyCronOrAdminAuthorization(
@@ -157,6 +233,8 @@ export async function verifyCronOrAdminAuthorization(
   ok: boolean;
   status: number;
   triggeredByUserId: string | null;
+  client?: SupabaseClient<Database>;
+  usingServiceRole?: boolean;
   error?: string;
 }> {
   const token = extractBearerToken(authorizationHeader);
@@ -169,12 +247,27 @@ export async function verifyCronOrAdminAuthorization(
       tokenBuf.length === secretBuf.length &&
       crypto.timingSafeEqual(tokenBuf, secretBuf)
     ) {
-      return { ok: true, status: 200, triggeredByUserId: null };
+      const { client, error } = getServiceRoleSupabaseClient();
+      if (!client) {
+        return {
+          ok: false,
+          status: 503,
+          triggeredByUserId: null,
+          error: error || 'Cron reminder delivery requires SUPABASE_SERVICE_ROLE_KEY.',
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        triggeredByUserId: null,
+        client,
+        usingServiceRole: true,
+      };
     }
   }
 
   const adminCheck = await verifyAdminAuthorization(authorizationHeader);
-  if (!adminCheck.ok) {
+  if (!adminCheck.ok || !adminCheck.client) {
     return {
       ok: false,
       status: adminCheck.status,
@@ -187,6 +280,8 @@ export async function verifyCronOrAdminAuthorization(
     ok: true,
     status: 200,
     triggeredByUserId: adminCheck.userId ?? null,
+    client: adminCheck.client,
+    usingServiceRole: adminCheck.usingServiceRole,
   };
 }
 
@@ -317,26 +412,38 @@ async function deliverToSubscriptions(
   }
 
   if (expiredIds.length > 0) {
-    await client.from('push_subscriptions').delete().in('id', expiredIds);
+    try {
+      await client.from('push_subscriptions').delete().in('id', expiredIds);
+    } catch {
+      // Ignore cleanup failures if admin delete RLS migration 009 has not been run yet
+    }
   }
 
   if (deliveredIds.length > 0) {
-    await client
-      .from('push_subscriptions')
-      .update({ last_notified_at: new Date().toISOString() })
-      .in('id', deliveredIds);
+    try {
+      await client
+        .from('push_subscriptions')
+        .update({ last_notified_at: new Date().toISOString() })
+        .in('id', deliveredIds);
+    } catch {
+      // Ignore timestamp update failures if admin update RLS migration 009 has not been run yet
+    }
   }
 
-  await client.from('push_notification_logs').insert({
-    notification_type: logMeta.notificationType,
-    title: logMeta.summaryTitle.slice(0, 160),
-    body: logMeta.summaryBody.slice(0, 500),
-    target_url: sanitizeTargetPath(logMeta.summaryUrl),
-    sent_by: logMeta.sentBy,
-    recipients_count: subscriptions.length,
-    delivered_count: deliveredIds.length,
-    failed_count: failedCount + expiredIds.length,
-  });
+  try {
+    await client.from('push_notification_logs').insert({
+      notification_type: logMeta.notificationType,
+      title: logMeta.summaryTitle.slice(0, 160),
+      body: logMeta.summaryBody.slice(0, 500),
+      target_url: sanitizeTargetPath(logMeta.summaryUrl),
+      sent_by: logMeta.sentBy,
+      recipients_count: subscriptions.length,
+      delivered_count: deliveredIds.length,
+      failed_count: failedCount + expiredIds.length,
+    });
+  } catch {
+    // Do not fail a completed Web Push delivery if log insertion fails
+  }
 
   return {
     recipientsCount: subscriptions.length,
@@ -348,9 +455,13 @@ async function deliverToSubscriptions(
 
 export async function sendTargetedPushNotifications(
   input: SendPushPayload,
-  adminUserId: string
+  adminUserId: string,
+  authorizedClient?: SupabaseClient<Database>
 ): Promise<{ status: number; body: SendPushResponse | { error: string } }> {
-  const { client, error: clientErr } = getAdminSupabaseClient();
+  const clientRes = authorizedClient
+    ? { client: authorizedClient, error: null }
+    : getServiceRoleSupabaseClient();
+  const { client, error: clientErr } = clientRes;
   if (!client) {
     return { status: 503, body: { error: clientErr || 'Server not configured.' } };
   }
@@ -654,9 +765,14 @@ export async function sendTargetedPushNotifications(
 
 export async function runInactivityAndTestReminders(
   input: RemindInactiveInput,
-  triggeredByUserId: string | null
+  triggeredByUserId: string | null,
+  authorizedClient?: SupabaseClient<Database>,
+  usingServiceRole = Boolean(getServerEnv().serviceRoleKey)
 ): Promise<{ status: number; body: RemindInactiveResponse | { error: string } }> {
-  const { client, error: clientErr } = getAdminSupabaseClient();
+  const clientRes = authorizedClient
+    ? { client: authorizedClient, error: null }
+    : getServiceRoleSupabaseClient();
+  const { client, error: clientErr } = clientRes;
   if (!client) {
     return { status: 503, body: { error: clientErr || 'Server not configured.' } };
   }
@@ -716,7 +832,6 @@ export async function runInactivityAndTestReminders(
     { data: publishedTopics },
     { data: publishedLessons },
     { data: publishedTests },
-    authUsersRes,
   ] = await Promise.all([
     client.from('profiles').select('id, role, created_at').in('id', userIds),
     client
@@ -743,17 +858,26 @@ export async function runInactivityAndTestReminders(
       .from('tests')
       .select('id, title, topic_id, lesson_id')
       .eq('is_published', true),
-    client.auth.admin.listUsers({ perPage: 1000 }),
   ]);
+
+  const authSignInMap = new Map<string, string | null>();
+  if (usingServiceRole) {
+    const authUsersRes = await client.auth.admin.listUsers({ perPage: 1000 });
+    for (const u of authUsersRes.data?.users ?? []) {
+      authSignInMap.set(u.id, u.last_sign_in_at ?? null);
+    }
+  } else {
+    const { data: contacts } = await client.rpc('get_admin_student_contacts');
+    for (const c of contacts ?? []) {
+      authSignInMap.set(c.student_id, c.last_sign_in_at ?? null);
+    }
+  }
 
   const studentRoleIds = new Set(
     (profiles ?? []).filter((p) => p.role === 'student').map((p) => p.id)
   );
   const profileCreatedAt = new Map(
     (profiles ?? []).map((p) => [p.id, p.created_at])
-  );
-  const authSignInMap = new Map(
-    (authUsersRes.data?.users ?? []).map((u) => [u.id, u.last_sign_in_at ?? null])
   );
 
   // Resolve enrolled (exam_id, subject_id) pairs per student

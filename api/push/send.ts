@@ -58,7 +58,11 @@ export default async function handler(req: VercelLikeRequest, res: VercelLikeRes
       return;
     }
 
-    const result = await sendTargetedPushNotifications(payload, authCheck.userId);
+    const result = await sendTargetedPushNotifications(
+      payload,
+      authCheck.userId,
+      authCheck.client
+    );
     res.status(result.status).json(result.body);
   } catch (err) {
     console.error('Push send handler error:', err);

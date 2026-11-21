@@ -58,7 +58,9 @@ export default async function handler(req: VercelLikeRequest, res: VercelLikeRes
 
     const result = await runInactivityAndTestReminders(
       input,
-      authCheck.triggeredByUserId
+      authCheck.triggeredByUserId,
+      authCheck.client,
+      Boolean(authCheck.usingServiceRole)
     );
     res.status(result.status).json(result.body);
   } catch (err) {

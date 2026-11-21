@@ -31,6 +31,7 @@ interface MinistryCardItem {
   actionType: 'connect' | 'academy' | 'youtube';
   purpose?: ConnectPurpose;
   isFlyerGraphic?: boolean;
+  isLandscapeFlyer?: boolean;
 }
 
 interface PillarItem {
@@ -44,10 +45,13 @@ interface PillarItem {
 }
 
 const HERO_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_12-16-41_2627_2__03315170.jpg';
+const PROSKYNESIS_FLYER_GRAPHIC = '/assets/aistudio/IMG-20261106-WA0013_2__af3c832d.jpg';
 const PROSKYNESIS_CARD_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_11-35-02_4464_36__214b33fd.jpg';
 const WORSHIP_DRAPE_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_12-17-17_0587_30__0560dea7.jpg';
+const PASTOR_BLAZER_IMAGE = '/assets/aistudio/ResizedImage_2026-11-08_12-51-39_4979_26__fa06ac66.jpg';
 const SUNDAY_TEACHING_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_12-16-53_2026_11__30d0b2d1.jpg';
-const MIDWEEK_MINISTER_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_12-17-16_0346_29__551cefb2.jpg';
+const MIDWEEK_NOTES_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_12-16-59_6369_15__8c4fa090.jpg';
+const SANCTUARY_PRAYER_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_12-17-14_1115_27__a586fb90.jpg';
 const CAMPUS_STUDENTS_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_12-16-53_4694_10__f1d38e41.jpg';
 const FELLOWSHIP_JOY_IMAGE = '/assets/aistudio/ResizedImage_2026-11-15_11-35-00_7854_35__e112d856.jpg';
 const OFFICIAL_MINISTRY_BANNER = '/assets/aistudio/IMG-20261121-WA0018_235ddb0e.jpg';
@@ -75,31 +79,43 @@ const GATHERING_CARDS: MinistryCardItem[] = [
     title: 'Sunday Word',
     subtitle: 'Verse-by-verse teaching rooted in Scripture.',
     schedule: 'Sundays · 9:00 AM · JCR, Queen Elizabeth II Hall',
-    image: SUNDAY_TEACHING_IMAGE,
-    alt: 'Pastor Kunle preaching with microphone at The Phosters Ministries service',
+    image: PASTOR_BLAZER_IMAGE,
+    alt: 'Pastor Kunle preaching in royal blue blazer inside JCR Queen Elizabeth Hall',
     actionType: 'connect',
     purpose: 'visit',
   },
   {
     id: 'midweek-service',
-    kicker: 'Midweek Word & Prayer',
+    kicker: 'Midweek Bible Study',
     title: 'Tuesday Fellowship',
-    subtitle: 'Focused Bible study and midweek prayer renewal.',
+    subtitle: 'Practical discipleship, notes, and midweek prayer.',
     schedule: 'Tuesdays · 5:00 PM – 6:00 PM · JCR, Queen Elizabeth II Hall',
-    image: MIDWEEK_MINISTER_IMAGE,
-    alt: 'Minister teaching inside JCR Queen Elizabeth Hall during fellowship',
+    image: MIDWEEK_NOTES_IMAGE,
+    alt: 'Pastor teaching members taking notes inside JCR Queen Elizabeth Hall',
     actionType: 'connect',
     purpose: 'visit',
   },
   {
     id: 'proskynesis',
-    kicker: 'Annual Convocation',
+    kicker: 'Word · Worship · Drama · Hymns',
     title: "Proskynesis '26",
-    subtitle: 'Spiritual Sacrifices · Our 1st-anniversary worship evening.',
-    schedule: 'Annual Gathering · Watch Archives on YouTube',
-    image: WORSHIP_DRAPE_IMAGE,
-    alt: 'Worship minister singing passionately during The Phosters Ministries gathering',
+    subtitle: 'Spiritual Sacrifices (1 Peter 2:5) · With Pastor Kunle & Pastor Treasure Heben.',
+    schedule: '7th Nov 2026 · 12:00 PM · Watch on YouTube',
+    image: PROSKYNESIS_FLYER_GRAPHIC,
+    alt: 'Proskynesis 2026 Spiritual Sacrifices flyer featuring Revd Rasine Irem, Pastor Kunle, and Pastor Treasure Heben at JCR Queen Elizabeth Hall UI Ibadan',
     actionType: 'youtube',
+    isLandscapeFlyer: true,
+  },
+  {
+    id: 'worship-moments',
+    kicker: 'Ministry Moments',
+    title: 'Spirit & Truth',
+    subtitle: 'Unhurried praise and consecrated campus worship.',
+    schedule: 'Weekly Services · JCR, Queen Elizabeth II Hall',
+    image: WORSHIP_DRAPE_IMAGE,
+    alt: 'Worship minister singing fervently against royal blue backdrop',
+    actionType: 'connect',
+    purpose: 'visit',
   },
   {
     id: 'phosters-academy',
@@ -132,8 +148,8 @@ const MINISTRY_PILLARS: PillarItem[] = [
     summary:
       'Every Sunday at 9:00 AM and Tuesday evening from 5:00 PM to 6:00 PM, we teach Scripture verse by verse so believers know Christ deeply and stand firm in truth.',
     scheduleNote: 'Sundays 9:00 AM · Tuesdays 5:00 PM – 6:00 PM',
-    image: SUNDAY_TEACHING_IMAGE,
-    alt: 'Pastor teaching the Word during worship service at The Phosters Ministries',
+    image: PASTOR_BLAZER_IMAGE,
+    alt: 'Pastor Kunle preaching the Word before the congregation at JCR Queen Elizabeth Hall',
   },
   {
     id: 'worship',
@@ -141,7 +157,7 @@ const MINISTRY_PILLARS: PillarItem[] = [
     scriptureRef: 'John 4:23–24',
     summary:
       'From weekly assemblies at Queen Elizabeth Hall 2 to our annual Proskynesis convocation, worship is offered in spirit, truth, and unhurried reverence.',
-    scheduleNote: 'Annual Proskynesis Worship & Word Evening',
+    scheduleNote: 'Annual Proskynesis Worship & Word Convocation',
     image: PROSKYNESIS_CARD_IMAGE,
     alt: 'Worship leader singing in front of The Phosters Ministries backdrop',
   },
@@ -152,8 +168,8 @@ const MINISTRY_PILLARS: PillarItem[] = [
     summary:
       'True to the name Phosteres (light-bearers), we walk closely with young men and women to build godly character, spiritual discipline, and purpose.',
     scheduleNote: 'JCR, Queen Elizabeth Hall 2, University of Ibadan',
-    image: HERO_IMAGE,
-    alt: 'Pastor Kunle encouraging believers during a teaching session',
+    image: MIDWEEK_NOTES_IMAGE,
+    alt: 'Interactive Bible teaching with members taking study notes inside JCR Hall',
   },
   {
     id: 'prayer',
@@ -162,8 +178,8 @@ const MINISTRY_PILLARS: PillarItem[] = [
     summary:
       'Intercession anchors everything we do—praying for students facing examinations, families across Ibadan, and spiritual awakening on campus.',
     scheduleNote: 'Tuesdays 5:00 PM – 6:00 PM · Midweek Service',
-    image: MIDWEEK_MINISTER_IMAGE,
-    alt: 'Midweek fellowship teaching and prayer session at Queen Elizabeth Hall 2',
+    image: SANCTUARY_PRAYER_IMAGE,
+    alt: 'Quiet moment of prayer and reflection inside JCR Queen Elizabeth Hall',
   },
   {
     id: 'fellowship',
@@ -182,8 +198,8 @@ const MINISTRY_PILLARS: PillarItem[] = [
     summary:
       'Through Phosters Academy, we serve JAMB UTME and UI Post-UTME aspirants with structured video classes, notes, and CBT simulations completely free of charge.',
     scheduleNote: 'Free Online Prep · Powered by The Phosters Ministries',
-    image: CAMPUS_STUDENTS_IMAGE,
-    alt: 'Students gathered warmly inside Queen Elizabeth Hall at University of Ibadan',
+    image: SUNDAY_TEACHING_IMAGE,
+    alt: 'Pastor Kunle teaching with passion at The Phosters Ministries service',
   },
 ];
 
@@ -471,37 +487,34 @@ export function MinistriesPage() {
                 </div>
               </div>
 
-              {/* Bottom-Right Floating Highlight Card (matches reference hero vignette) */}
-              <div className="w-full sm:w-80 rounded-xl border border-white/15 bg-black/75 backdrop-blur-md overflow-hidden shrink-0">
-                <div className="p-3.5 flex items-center gap-3.5">
-                  <div className="relative h-20 w-24 rounded-lg overflow-hidden shrink-0 border border-white/10">
-                    <SafePhoto
-                      src={PROSKYNESIS_CARD_IMAGE}
-                      alt="Worship minister leading Proskynesis worship evening"
-                      className="h-full w-full object-cover object-top"
-                      fallbackTitle="Proskynesis '26"
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <p className="text-[11px] font-medium text-ministry-300">
-                      1st Anniversary · Nov 2026
-                    </p>
+              {/* Bottom-Right Floating Proskynesis Card (matches reference hero vignette) */}
+              <div className="w-full sm:w-80 rounded-xl border border-white/15 bg-black/80 backdrop-blur-md overflow-hidden shrink-0">
+                <div className="relative aspect-[16/9] w-full bg-[#1a0a10] border-b border-white/10">
+                  <SafePhoto
+                    src={PROSKYNESIS_FLYER_GRAPHIC}
+                    alt="Proskynesis 2026 Spiritual Sacrifices flyer"
+                    className="h-full w-full object-cover"
+                    fallbackTitle="Proskynesis '26"
+                  />
+                </div>
+                <div className="px-3.5 py-2.5 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
                     <p className="font-display text-sm font-bold text-white leading-snug truncate">
                       Proskynesis &apos;26
                     </p>
-                    <p className="text-xs text-slate-300 truncate">
-                      Spiritual Sacrifices
+                    <p className="text-[11px] text-slate-300 tabular-nums truncate">
+                      7th Nov 2026 · 12:00 PM
                     </p>
-                    <a
-                      href={YOUTUBE_CHANNEL_SEARCH_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 pt-1 text-xs font-semibold text-white hover:text-ministry-300 transition-colors"
-                    >
-                      <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
-                      <span>Watch on YouTube</span>
-                    </a>
                   </div>
+                  <a
+                    href={YOUTUBE_CHANNEL_SEARCH_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white/15 hover:bg-white/25 text-xs font-semibold text-white transition-colors whitespace-nowrap shrink-0"
+                  >
+                    <Play className="h-3 w-3 fill-current" aria-hidden="true" />
+                    <span>Watch</span>
+                  </a>
                 </div>
               </div>
             </div>
@@ -561,6 +574,32 @@ export function MinistriesPage() {
                     className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.02]"
                     fallbackTitle={card.title}
                   />
+                </article>
+              ) : card.isLandscapeFlyer ? (
+                <article className="relative h-[380px] sm:h-[420px] w-[280px] sm:w-[312px] shrink-0 snap-start rounded-2xl overflow-hidden border border-white/15 bg-gradient-to-b from-[#1e0f07] via-[#0d1238] to-[#06091e] flex flex-col justify-between group">
+                  <div className="relative aspect-[16/9] w-full overflow-hidden border-b border-white/10 bg-[#1a0a10] shrink-0">
+                    <SafePhoto
+                      src={card.image}
+                      alt={card.alt}
+                      lazy
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                      fallbackTitle={card.title}
+                    />
+                  </div>
+                  <div className="p-5 flex-1 flex flex-col justify-end space-y-2 text-left">
+                    <p className="text-[11px] font-medium text-amber-300">
+                      {card.kicker}
+                    </p>
+                    <h3 className="font-display text-2xl font-bold text-white leading-tight">
+                      {card.title}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-200 leading-snug">
+                      {card.subtitle}
+                    </p>
+                    <p className="pt-1 text-[11px] text-slate-300 tabular-nums border-t border-white/15">
+                      {card.schedule}
+                    </p>
+                  </div>
                 </article>
               ) : (
                 <article className="relative h-[380px] sm:h-[420px] w-[260px] sm:w-[272px] shrink-0 snap-start rounded-2xl overflow-hidden border border-white/10 bg-slate-900 group">
