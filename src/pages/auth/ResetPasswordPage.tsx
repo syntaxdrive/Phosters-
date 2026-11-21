@@ -10,7 +10,7 @@ import { SetupRequiredNotice } from '../../components/ui/SetupRequiredNotice';
 import { LoadingState } from '../../components/ui/States';
 
 export function ResetPasswordPage() {
-  const { isConfigured, configError, loading, user, updatePassword } = useAuth();
+  const { isConfigured, configError, loading, user, updatePassword, clearPasswordRecovery } = useAuth();
   const navigate = useNavigate();
 
   const [password, setPassword] = useState('');
@@ -33,8 +33,8 @@ export function ResetPasswordPage() {
     return (
       <div className="max-w-md mx-auto py-4 sm:py-10">
         <Card padding="lg">
-          <h1 className="text-xl font-bold text-slate-900">Reset link expired or missing</h1>
-          <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">Reset link expired or missing</h1>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
             Open this page using the password reset link sent to your email address, or request a new reset link below.
           </p>
           <div className="mt-5 flex flex-col sm:flex-row gap-3">
@@ -46,7 +46,7 @@ export function ResetPasswordPage() {
             </Link>
             <Link
               to="/login"
-              className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
+              className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
             >
               Sign In
             </Link>
@@ -76,6 +76,7 @@ export function ResetPasswordPage() {
       return;
     }
 
+    clearPasswordRecovery();
     setSuccess(true);
   }
 
@@ -83,10 +84,10 @@ export function ResetPasswordPage() {
     <div className="max-w-md mx-auto py-4 sm:py-10">
       <Card padding="lg">
         <div className="space-y-1.5">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             Choose a new password
           </h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             Set a strong password you have not used elsewhere.
           </p>
         </div>

@@ -103,8 +103,8 @@ export function AdminLessonsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Lessons</h1>
-          <p className="text-sm text-slate-600">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Lessons</h1>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
             Manage video lessons, study notes, ordering, and publishing status.
           </p>
         </div>
@@ -130,7 +130,7 @@ export function AdminLessonsPage() {
             setFilterExamId(e.target.value);
             setFilterTopicId('all');
           }}
-          className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+          className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
         >
           <option value="all">All examinations</option>
           {exams.map((ex) => (
@@ -147,7 +147,7 @@ export function AdminLessonsPage() {
             setFilterSubjectId(e.target.value);
             setFilterTopicId('all');
           }}
-          className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+          className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
         >
           <option value="all">All subjects</option>
           {subjects.map((s) => (
@@ -161,7 +161,7 @@ export function AdminLessonsPage() {
           aria-label="Filter by topic"
           value={filterTopicId}
           onChange={(e) => setFilterTopicId(e.target.value)}
-          className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+          className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
         >
           <option value="all">All topics</option>
           {availableFilterTopics.map((t) => (
@@ -187,17 +187,17 @@ export function AdminLessonsPage() {
         />
       ) : (
         <Card padding="none" className="overflow-hidden">
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {filteredLessons.map((lesson) => {
               const isConfirming = confirmDeleteId === lesson.id;
               return (
                 <li key={lesson.id} className="p-4 sm:p-5 space-y-3">
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div className="min-w-0 space-y-1">
-                      <p className="text-base font-semibold text-slate-900">
+                      <p className="text-base font-semibold text-slate-900 dark:text-slate-100">
                         {lesson.title}
                       </p>
-                      <div className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                      <div className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500 dark:text-slate-400">
                         <span>{lesson.examName}</span>
                         <span aria-hidden="true">·</span>
                         <span>{lesson.subjectName}</span>
@@ -209,8 +209,8 @@ export function AdminLessonsPage() {
                         <span
                           className={
                             lesson.is_published
-                              ? 'font-medium text-phosters-700'
-                              : 'font-medium text-amber-700'
+                              ? 'font-medium text-phosters-700 dark:text-phosters-400'
+                              : 'font-medium text-amber-700 dark:text-amber-400'
                           }
                         >
                           {lesson.is_published ? 'Published' : 'Draft'}
@@ -223,7 +223,7 @@ export function AdminLessonsPage() {
                         type="button"
                         aria-label={`Move ${lesson.title} earlier`}
                         onClick={() => void handleNudgeOrder(lesson, -1)}
-                        className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer"
+                        className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                       >
                         <ArrowUp className="h-4 w-4" aria-hidden="true" />
                       </button>
@@ -231,7 +231,7 @@ export function AdminLessonsPage() {
                         type="button"
                         aria-label={`Move ${lesson.title} later`}
                         onClick={() => void handleNudgeOrder(lesson, 1)}
-                        className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer"
+                        className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                       >
                         <ArrowDown className="h-4 w-4" aria-hidden="true" />
                       </button>
@@ -245,7 +245,7 @@ export function AdminLessonsPage() {
 
                       <Link
                         to={`/admin/lessons/${lesson.id}`}
-                        className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
+                        className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                       >
                         Edit
                       </Link>
@@ -256,7 +256,7 @@ export function AdminLessonsPage() {
                         onClick={() =>
                           setConfirmDeleteId(isConfirming ? null : lesson.id)
                         }
-                        className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-200 text-red-600 hover:bg-red-50 cursor-pointer"
+                        className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
                       >
                         <Trash2 className="h-4 w-4" aria-hidden="true" />
                       </button>
@@ -264,7 +264,7 @@ export function AdminLessonsPage() {
                   </div>
 
                   {isConfirming && (
-                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-900">
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/70 p-3 text-xs text-red-900 dark:text-red-200">
                       <span>Delete this lesson permanently?</span>
                       <div className="flex items-center gap-2">
                         <Button

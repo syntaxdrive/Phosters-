@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowDown, ArrowLeft, ArrowUp, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, BellRing, Plus, Trash2 } from 'lucide-react';
 import { isSafeExternalHttpUrl, validateMaterialUrl } from '../../lib/materialLinks';
 import { getSafeYouTubeEmbedUrl } from '../../lib/youtube';
 import {
@@ -10,6 +10,7 @@ import {
   fetchLessonForEditor,
   saveLessonWithAttachments,
 } from '../../services/adminService';
+import { triggerPushNotification } from '../../services/pushService';
 import type { LinkDraft, MaterialDraft } from '../../types/admin';
 import type { Exam, MaterialFileType, Subject, Topic } from '../../types/database';
 import { AdminNav } from '../../components/admin/AdminNav';
@@ -43,6 +44,7 @@ export function AdminLessonEditorPage() {
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [displayOrder, setDisplayOrder] = useState(1);
   const [isPublished, setIsPublished] = useState(false);
+  const [notifyOnSave, setNotifyOnSave] = useState(false);
 
   const [materials, setMaterials] = useState<MaterialDraft[]>([]);
   const [links, setLinks] = useState<LinkDraft[]>([]);
@@ -51,7 +53,9 @@ export function AdminLessonEditorPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [pushNotice, setPushNotice] = useState<{ tone: 'success' | 'info' | 'error'; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [sendingPush, setSendingPush] = useState(false);
 
   const loadEditor = useCallback(async () => {
     setLoading(true);
@@ -176,6 +180,7 @@ export function AdminLessonEditorPage() {
     e.preventDefault();
     setFormError(null);
     setSaveSuccess(null);
+    setPushNotice(null);
 
     if (!topicId) {
       setFormError('Select a topic for this lesson (create one in Topics if none exist).');
@@ -209,8 +214,40 @@ export function AdminLessonEditorPage() {
     }
 
     setSaveSuccess('Lesson saved.');
+
+    if (isPublished && notifyOnSave) {
+      setSendingPush(true);
+      const pushRes = await triggerPushNotification({
+        type: 'lesson',
+        lessonId: res.lessonId,
+      });
+      setSendingPush(false);
+      if (pushRes.error) {
+        setPushNotice({ tone: 'error', message: `Lesson saved, but push failed: ${pushRes.error}` });
+      } else if (pushRes.result) {
+        setPushNotice({ tone: 'success', message: pushRes.result.message });
+      }
+      setNotifyOnSave(false);
+    }
+
     if (!isEditing) {
       navigate(`/admin/lessons/${res.lessonId}`, { replace: true });
+    }
+  }
+
+  async function handleSendLessonPush() {
+    if (!lessonId || !isPublished) return;
+    setPushNotice(null);
+    setSendingPush(true);
+    const pushRes = await triggerPushNotification({
+      type: 'lesson',
+      lessonId,
+    });
+    setSendingPush(false);
+    if (pushRes.error) {
+      setPushNotice({ tone: 'error', message: pushRes.error });
+    } else if (pushRes.result) {
+      setPushNotice({ tone: 'success', message: pushRes.result.message });
     }
   }
 
@@ -230,23 +267,36 @@ export function AdminLessonEditorPage() {
         <div className="space-y-1">
           <Link
             to="/admin/lessons"
-            className="inline-flex items-center gap-1.5 min-h-[40px] text-sm font-medium text-slate-600 hover:text-slate-900"
+            className="inline-flex items-center gap-1.5 min-h-[40px] text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             <span>Back to Lessons</span>
           </Link>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             {isEditing ? 'Edit Lesson' : 'Create Lesson'}
           </h1>
         </div>
 
         {isEditing && lessonId && (
-          <Link
-            to={`/app/lessons/${lessonId}`}
-            className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
-          >
-            {isPublished ? 'View in Student Portal' : 'Preview Lesson'}
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {isPublished && (
+              <Button
+                type="button"
+                variant="secondary"
+                loading={sendingPush}
+                onClick={() => void handleSendLessonPush()}
+              >
+                <BellRing className="h-4 w-4" aria-hidden="true" />
+                <span>Notify Students</span>
+              </Button>
+            )}
+            <Link
+              to={`/app/lessons/${lessonId}`}
+              className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              {isPublished ? 'View in Student Portal' : 'Preview Lesson'}
+            </Link>
+          </div>
         )}
       </div>
 
@@ -264,14 +314,15 @@ export function AdminLessonEditorPage() {
 
       {formError && <Alert tone="error">{formError}</Alert>}
       {saveSuccess && <Alert tone="success">{saveSuccess}</Alert>}
+      {pushNotice && <Alert tone={pushNotice.tone}>{pushNotice.message}</Alert>}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card padding="lg" className="space-y-4">
-          <h2 className="text-base font-bold text-slate-900">Placement &amp; details</h2>
+          <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">Placement &amp; details</h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-slate-900">
+              <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">
                 Examination
               </label>
               <select
@@ -279,7 +330,7 @@ export function AdminLessonEditorPage() {
                 onChange={(e) =>
                   handleExamOrSubjectChange(e.target.value, selectedSubjectId)
                 }
-                className="w-full min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
               >
                 {exams.map((ex) => (
                   <option key={ex.id} value={ex.id}>
@@ -290,13 +341,13 @@ export function AdminLessonEditorPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-slate-900">Subject</label>
+              <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">Subject</label>
               <select
                 value={selectedSubjectId}
                 onChange={(e) =>
                   handleExamOrSubjectChange(selectedExamId, e.target.value)
                 }
-                className="w-full min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
               >
                 {subjects.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -307,11 +358,11 @@ export function AdminLessonEditorPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-slate-900">Topic</label>
+              <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">Topic</label>
               <select
                 value={topicId}
                 onChange={(e) => setTopicId(e.target.value)}
-                className="w-full min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
                 required
               >
                 {matchingTopics.length === 0 ? (
@@ -364,7 +415,7 @@ export function AdminLessonEditorPage() {
           />
 
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-slate-900">
+            <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">
               Full lesson description &amp; study guide (optional)
             </label>
             <textarea
@@ -372,7 +423,7 @@ export function AdminLessonEditorPage() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Key concepts, formulas, and study instructions for students..."
-              className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600"
+              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600 dark:focus:border-phosters-500"
             />
           </div>
 
@@ -385,22 +436,38 @@ export function AdminLessonEditorPage() {
               onChange={(e) => setDisplayOrder(Number(e.target.value) || 0)}
             />
 
-            <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isPublished}
-                onChange={(e) => setIsPublished(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-phosters-600 focus:ring-phosters-600"
-              />
-              <span className="text-sm font-medium text-slate-800">
-                Published (visible to enrolled students)
-              </span>
-            </label>
+            <div className="space-y-1">
+              <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isPublished}
+                  onChange={(e) => setIsPublished(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600"
+                />
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                  Published (visible to enrolled students)
+                </span>
+              </label>
+
+              {isPublished && (
+                <label className="flex items-center gap-2.5 min-h-[40px] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={notifyOnSave}
+                    onChange={(e) => setNotifyOnSave(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600"
+                  />
+                  <span className="text-sm font-medium text-phosters-700 dark:text-phosters-400">
+                    Send native push notification to enrolled students when saved
+                  </span>
+                </label>
+              )}
+            </div>
           </div>
         </Card>
 
         <Card padding="lg" className="space-y-4">
-          <h2 className="text-base font-bold text-slate-900">Lesson video (YouTube)</h2>
+          <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">Lesson video (YouTube)</h2>
 
           <Input
             label="YouTube video URL (optional)"
@@ -417,10 +484,10 @@ export function AdminLessonEditorPage() {
 
           {safeEmbedPreview && (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-phosters-700">
+              <p className="text-xs font-medium text-phosters-700 dark:text-phosters-400">
                 Valid YouTube embed verified ({safeEmbedPreview})
               </p>
-              <div className="max-w-md aspect-video rounded-lg overflow-hidden border border-slate-200 bg-black">
+              <div className="max-w-md aspect-video rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-black">
                 <iframe
                   src={safeEmbedPreview}
                   title="Video preview"
@@ -435,10 +502,10 @@ export function AdminLessonEditorPage() {
         <Card padding="lg" className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-bold text-slate-900">
+              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
                 Learning materials (GitHub raw URLs)
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Upload files to the Phosters-owned materials repository and paste the{' '}
                 <code className="font-mono">https://raw.githubusercontent.com/...</code> URL.
               </p>
@@ -450,7 +517,7 @@ export function AdminLessonEditorPage() {
           </div>
 
           {materials.length === 0 ? (
-            <p className="text-sm text-slate-500">No materials added yet.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">No materials added yet.</p>
           ) : (
             <div className="space-y-3">
               {materials.map((mat, index) => {
@@ -460,10 +527,10 @@ export function AdminLessonEditorPage() {
                 return (
                   <div
                     key={mat.localKey}
-                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3"
+                    className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 space-y-3"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-slate-600">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
                         Material #{index + 1}
                       </span>
                       <div className="flex items-center gap-1.5">
@@ -474,7 +541,7 @@ export function AdminLessonEditorPage() {
                           onClick={() =>
                             setMaterials((prev) => moveItem(prev, index, -1))
                           }
-                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 bg-white text-slate-700 disabled:opacity-40 cursor-pointer"
+                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 cursor-pointer"
                         >
                           <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
@@ -485,7 +552,7 @@ export function AdminLessonEditorPage() {
                           onClick={() =>
                             setMaterials((prev) => moveItem(prev, index, 1))
                           }
-                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 bg-white text-slate-700 disabled:opacity-40 cursor-pointer"
+                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 cursor-pointer"
                         >
                           <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
@@ -497,7 +564,7 @@ export function AdminLessonEditorPage() {
                               prev.filter((_, idx) => idx !== index)
                             )
                           }
-                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 bg-white text-red-600 hover:bg-red-50 cursor-pointer"
+                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
                         >
                           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
@@ -524,7 +591,7 @@ export function AdminLessonEditorPage() {
                       </div>
 
                       <div className="space-y-1.5">
-                        <label className="block text-sm font-medium text-slate-900">
+                        <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">
                           File type
                         </label>
                         <select
@@ -541,7 +608,7 @@ export function AdminLessonEditorPage() {
                               )
                             )
                           }
-                          className="w-full min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                          className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
                         >
                           <option value="pdf">PDF</option>
                           <option value="image">Image</option>
@@ -577,10 +644,10 @@ export function AdminLessonEditorPage() {
         <Card padding="lg" className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-bold text-slate-900">
+              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
                 Important links (optional)
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Reference websites or syllabus links for this lesson.
               </p>
             </div>
@@ -591,7 +658,7 @@ export function AdminLessonEditorPage() {
           </div>
 
           {links.length === 0 ? (
-            <p className="text-sm text-slate-500">No important links added.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">No important links added.</p>
           ) : (
             <div className="space-y-3">
               {links.map((lnk, index) => {
@@ -600,10 +667,10 @@ export function AdminLessonEditorPage() {
                 return (
                   <div
                     key={lnk.localKey}
-                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3"
+                    className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 space-y-3"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-slate-600">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
                         Link #{index + 1}
                       </span>
                       <div className="flex items-center gap-1.5">
@@ -614,7 +681,7 @@ export function AdminLessonEditorPage() {
                           onClick={() =>
                             setLinks((prev) => moveItem(prev, index, -1))
                           }
-                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 bg-white text-slate-700 disabled:opacity-40 cursor-pointer"
+                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 cursor-pointer"
                         >
                           <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
@@ -625,7 +692,7 @@ export function AdminLessonEditorPage() {
                           onClick={() =>
                             setLinks((prev) => moveItem(prev, index, 1))
                           }
-                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 bg-white text-slate-700 disabled:opacity-40 cursor-pointer"
+                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 cursor-pointer"
                         >
                           <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
@@ -637,7 +704,7 @@ export function AdminLessonEditorPage() {
                               prev.filter((_, idx) => idx !== index)
                             )
                           }
-                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 bg-white text-red-600 hover:bg-red-50 cursor-pointer"
+                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
                         >
                           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
@@ -691,7 +758,7 @@ export function AdminLessonEditorPage() {
         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
           <Link
             to="/admin/lessons"
-            className="inline-flex items-center justify-center min-h-[48px] px-5 py-3 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
+            className="inline-flex items-center justify-center min-h-[48px] px-5 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
           >
             Back to Lessons
           </Link>

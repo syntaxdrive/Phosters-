@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { validateEmail } from '../../lib/validation';
 import { Alert } from '../../components/ui/Alert';
@@ -9,8 +9,12 @@ import { Input } from '../../components/ui/Input';
 import { SetupRequiredNotice } from '../../components/ui/SetupRequiredNotice';
 
 export function ForgotPasswordPage() {
-  const { isConfigured, configError, requestPasswordReset } = useAuth();
-  const [email, setEmail] = useState('');
+  const { isConfigured, configError, user, requestPasswordReset } = useAuth();
+  const location = useLocation();
+  const initialEmail =
+    (location.state as { email?: string } | null)?.email?.trim() || user?.email || '';
+
+  const [email, setEmail] = useState(initialEmail);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -44,10 +48,10 @@ export function ForgotPasswordPage() {
     <div className="max-w-md mx-auto py-4 sm:py-10">
       <Card padding="lg">
         <div className="space-y-1.5">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             Reset your password
           </h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             Enter the email address for your Phosters account and we will send a password reset link.
           </p>
         </div>
@@ -64,10 +68,10 @@ export function ForgotPasswordPage() {
               If an account exists for <strong>{sentTo}</strong>, a password reset link has been sent to that email address.
             </Alert>
             <Link
-              to="/login"
-              className="inline-flex w-full items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
+              to={user ? '/app/profile' : '/login'}
+              className="inline-flex w-full items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
             >
-              Back to Sign In
+              {user ? 'Back to Profile' : 'Back to Sign In'}
             </Link>
           </div>
         ) : (
@@ -93,10 +97,10 @@ export function ForgotPasswordPage() {
 
             <div className="text-center pt-2">
               <Link
-                to="/login"
-                className="text-sm font-medium text-slate-600 hover:text-slate-900 hover:underline"
+                to={user ? '/app/profile' : '/login'}
+                className="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:underline"
               >
-                Back to Sign In
+                {user ? 'Back to Profile' : 'Back to Sign In'}
               </Link>
             </div>
           </form>

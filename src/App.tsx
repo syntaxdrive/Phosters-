@@ -3,9 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Suspense, lazy } from 'react';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { Suspense, lazy, useEffect } from 'react';
+import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider } from './hooks/AuthContext';
+import { ThemeProvider } from './hooks/ThemeContext';
+import { useAuth } from './hooks/useAuth';
 import { AppShell } from './components/layout/AppShell';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 import { AdminRoute } from './components/layout/AdminRoute';
@@ -16,6 +18,12 @@ const LandingPage = lazy(() =>
 );
 const SetupPage = lazy(() =>
   import('./pages/SetupPage').then((m) => ({ default: m.SetupPage }))
+);
+const SettingsPage = lazy(() =>
+  import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage }))
+);
+const LegalDocumentPage = lazy(() =>
+  import('./pages/legal/LegalDocumentPage').then((m) => ({ default: m.LegalDocumentPage }))
 );
 const LoginPage = lazy(() =>
   import('./pages/auth/LoginPage').then((m) => ({ default: m.LoginPage }))
@@ -90,50 +98,70 @@ const NotFoundPage = lazy(() =>
   import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage }))
 );
 
+function PasswordRecoveryRedirect() {
+  const { isPasswordRecovery } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isPasswordRecovery && location.pathname !== '/reset-password') {
+      navigate('/reset-password', { replace: true });
+    }
+  }, [isPasswordRecovery, location.pathname, navigate]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <AppShell>
-          <Suspense fallback={<LoadingState message="Loading page..." />}>
-            <Routes>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/setup" element={<SetupPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/signup" element={<SignupPage />} />
-              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-              <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <ThemeProvider>
+        <AuthProvider>
+          <PasswordRecoveryRedirect />
+          <AppShell>
+            <Suspense fallback={<LoadingState message="Loading page..." />}>
+              <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/setup" element={<SetupPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/legal" element={<LegalDocumentPage />} />
+                <Route path="/legal/:docSlug" element={<LegalDocumentPage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/signup" element={<SignupPage />} />
+                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-              <Route element={<ProtectedRoute />}>
-                <Route path="/app" element={<HomePage />} />
-                <Route path="/app/setup-exams" element={<ExamSetupPage />} />
-                <Route path="/app/subjects" element={<SubjectsPage />} />
-                <Route path="/app/subjects/:examSlug/:subjectSlug" element={<SubjectDetailPage />} />
-                <Route path="/app/lessons/:lessonId" element={<LessonPage />} />
-                <Route path="/app/tests/:testId" element={<TestTakePage />} />
-                <Route path="/app/results" element={<ResultsPage />} />
-                <Route path="/app/results/:attemptId" element={<TestResultDetailPage />} />
-                <Route path="/app/profile" element={<ProfilePage />} />
+                <Route element={<ProtectedRoute />}>
+                  <Route path="/app" element={<HomePage />} />
+                  <Route path="/app/setup-exams" element={<ExamSetupPage />} />
+                  <Route path="/app/subjects" element={<SubjectsPage />} />
+                  <Route path="/app/subjects/:examSlug/:subjectSlug" element={<SubjectDetailPage />} />
+                  <Route path="/app/lessons/:lessonId" element={<LessonPage />} />
+                  <Route path="/app/tests/:testId" element={<TestTakePage />} />
+                  <Route path="/app/results" element={<ResultsPage />} />
+                  <Route path="/app/results/:attemptId" element={<TestResultDetailPage />} />
+                  <Route path="/app/profile" element={<ProfilePage />} />
 
-                <Route element={<AdminRoute />}>
-                  <Route path="/admin" element={<AdminDashboardPage />} />
-                  <Route path="/admin/students" element={<AdminStudentsPage />} />
-                  <Route path="/admin/announcements" element={<AdminAnnouncementsPage />} />
-                  <Route path="/admin/examinations" element={<AdminExamsPage />} />
-                  <Route path="/admin/subjects" element={<AdminSubjectsPage />} />
-                  <Route path="/admin/topics" element={<AdminTopicsPage />} />
-                  <Route path="/admin/lessons" element={<AdminLessonsPage />} />
-                  <Route path="/admin/lessons/:lessonId" element={<AdminLessonEditorPage />} />
-                  <Route path="/admin/tests" element={<AdminTestsPage />} />
-                  <Route path="/admin/tests/:testId" element={<AdminTestEditorPage />} />
+                  <Route element={<AdminRoute />}>
+                    <Route path="/admin" element={<AdminDashboardPage />} />
+                    <Route path="/admin/students" element={<AdminStudentsPage />} />
+                    <Route path="/admin/announcements" element={<AdminAnnouncementsPage />} />
+                    <Route path="/admin/examinations" element={<AdminExamsPage />} />
+                    <Route path="/admin/subjects" element={<AdminSubjectsPage />} />
+                    <Route path="/admin/topics" element={<AdminTopicsPage />} />
+                    <Route path="/admin/lessons" element={<AdminLessonsPage />} />
+                    <Route path="/admin/lessons/:lessonId" element={<AdminLessonEditorPage />} />
+                    <Route path="/admin/tests" element={<AdminTestsPage />} />
+                    <Route path="/admin/tests/:testId" element={<AdminTestEditorPage />} />
+                  </Route>
                 </Route>
-              </Route>
 
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </Suspense>
-        </AppShell>
-      </AuthProvider>
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </Suspense>
+          </AppShell>
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

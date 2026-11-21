@@ -218,8 +218,8 @@ export function AdminExamsPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Examinations</h1>
-        <p className="text-sm text-slate-600">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Examinations</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-300">
           Manage examination profiles and configure allowed subjects separately for each examination.
         </p>
       </div>
@@ -233,14 +233,14 @@ export function AdminExamsPage() {
         <div className="lg:col-span-5 space-y-4">
           <Card padding="lg">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-base font-bold text-slate-900">
+              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
                 {editingExamId ? 'Edit examination' : 'Create examination'}
               </h2>
               {editingExamId && (
                 <button
                   type="button"
                   onClick={startNewExam}
-                  className="text-xs font-semibold text-phosters-700 hover:underline cursor-pointer"
+                  className="text-xs font-semibold text-phosters-700 dark:text-phosters-400 hover:underline cursor-pointer"
                 >
                   + New instead
                 </button>
@@ -271,14 +271,14 @@ export function AdminExamsPage() {
               />
 
               <div className="space-y-1.5">
-                <label className="block text-sm font-medium text-slate-900">
+                <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">
                   Description (optional)
                 </label>
                 <textarea
                   rows={3}
                   value={examDescription}
                   onChange={(e) => setExamDescription(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600 dark:focus:border-phosters-500"
                   placeholder="Short description of this examination"
                 />
               </div>
@@ -288,9 +288,9 @@ export function AdminExamsPage() {
                   type="checkbox"
                   checked={examActive}
                   onChange={(e) => setExamActive(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-phosters-600 focus:ring-phosters-600"
+                  className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600"
                 />
-                <span className="text-sm font-medium text-slate-800">
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
                   Active (visible to students)
                 </span>
               </label>
@@ -302,10 +302,10 @@ export function AdminExamsPage() {
           </Card>
 
           <Card padding="none" className="overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
-              <h3 className="text-sm font-bold text-slate-900">All examinations</h3>
+            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">All examinations</h3>
             </div>
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {exams.map((exam) => (
                 <li
                   key={exam.id}
@@ -319,12 +319,14 @@ export function AdminExamsPage() {
                     <p
                       className={[
                         'text-sm font-semibold truncate',
-                        selectedExamId === exam.id ? 'text-phosters-700' : 'text-slate-900',
+                        selectedExamId === exam.id
+                          ? 'text-phosters-700 dark:text-phosters-400'
+                          : 'text-slate-900 dark:text-slate-100',
                       ].join(' ')}
                     >
                       {exam.name}
                     </p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
                       {exam.slug} · {exam.is_active ? 'Active' : 'Hidden'}
                     </p>
                   </button>
@@ -341,10 +343,10 @@ export function AdminExamsPage() {
           <Card padding="lg" className="space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h2 className="text-base font-bold text-slate-900">
+                <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
                   Subject options {selectedExam ? `for ${selectedExam.name}` : ''}
                 </h2>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Configure which subjects students can choose under this examination.
                 </p>
               </div>
@@ -353,7 +355,7 @@ export function AdminExamsPage() {
                   aria-label="Select examination"
                   value={selectedExamId}
                   onChange={(e) => setSelectedExamId(e.target.value)}
-                  className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                  className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
                 >
                   {exams.map((ex) => (
                     <option key={ex.id} value={ex.id}>
@@ -370,7 +372,7 @@ export function AdminExamsPage() {
                   aria-label="Choose subject to add"
                   value={subjectToAdd}
                   onChange={(e) => setSubjectToAdd(e.target.value)}
-                  className="flex-1 min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                  className="flex-1 min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
                 >
                   <option value="">Select a subject to add...</option>
                   {unmappedSubjects.map((s) => (
@@ -391,30 +393,30 @@ export function AdminExamsPage() {
             )}
 
             {examSubjects.length === 0 ? (
-              <p className="text-sm text-slate-500 py-4">
+              <p className="text-sm text-slate-500 dark:text-slate-400 py-4">
                 No subjects are assigned to this examination yet.
               </p>
             ) : (
-              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
                 {examSubjects.map((row) => {
                   const subj = subjectMap.get(row.subject_id);
                   return (
                     <div
                       key={row.id}
-                      className="p-3.5 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      className="p-3.5 bg-white dark:bg-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-900">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                           {subj?.name ?? 'Unknown subject'}
                         </p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
                           Order {row.display_order} · {row.is_active ? 'Active' : 'Inactive'}
                           {row.is_compulsory ? ' · Compulsory' : ''}
                         </p>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
-                        <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 mr-1">
+                        <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 mr-1">
                           <span>Order</span>
                           <input
                             type="number"
@@ -423,7 +425,7 @@ export function AdminExamsPage() {
                             onChange={(e) =>
                               void handleOrderChange(row, Number(e.target.value) || 0)
                             }
-                            className="w-16 min-h-[36px] rounded border border-slate-300 px-2 text-xs tabular-nums"
+                            className="w-16 min-h-[36px] rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-xs text-slate-900 dark:text-slate-100 tabular-nums"
                           />
                         </label>
 
@@ -433,8 +435,8 @@ export function AdminExamsPage() {
                           className={[
                             'min-h-[36px] px-2.5 py-1 rounded-md text-xs font-medium border cursor-pointer',
                             row.is_compulsory
-                              ? 'bg-phosters-50 border-phosters-300 text-phosters-800'
-                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50',
+                              ? 'bg-phosters-50 dark:bg-phosters-950/50 border-phosters-300 dark:border-phosters-700 text-phosters-800 dark:text-phosters-300'
+                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800',
                           ].join(' ')}
                         >
                           {row.is_compulsory ? 'Compulsory' : 'Optional'}
@@ -446,8 +448,8 @@ export function AdminExamsPage() {
                           className={[
                             'min-h-[36px] px-2.5 py-1 rounded-md text-xs font-medium border cursor-pointer',
                             row.is_active
-                              ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                              : 'bg-slate-100 border-slate-300 text-slate-500',
+                              ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                              : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400',
                           ].join(' ')}
                         >
                           {row.is_active ? 'Enabled' : 'Disabled'}
@@ -457,7 +459,7 @@ export function AdminExamsPage() {
                           type="button"
                           aria-label={`Remove ${subj?.name ?? 'subject'}`}
                           onClick={() => void handleRemoveMapping(row.id)}
-                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded-md border border-slate-200 text-red-600 hover:bg-red-50 cursor-pointer"
+                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded-md border border-slate-200 dark:border-slate-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
                         >
                           <Trash2 className="h-4 w-4" aria-hidden="true" />
                         </button>

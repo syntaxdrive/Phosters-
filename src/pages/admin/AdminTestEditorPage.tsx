@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowDown, ArrowLeft, ArrowUp, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, BellRing, Plus, Trash2 } from 'lucide-react';
 import { fetchAdminLessonsList } from '../../services/adminService';
 import { fetchTestForAdminEditor, saveAdminTest } from '../../services/cbtService';
+import { triggerPushNotification } from '../../services/pushService';
 import type { AdminLessonListItem } from '../../types/admin';
 import type { AdminQuestionDraft } from '../../types/cbt';
 import type { Exam, Subject, Topic } from '../../types/database';
@@ -54,13 +55,16 @@ export function AdminTestEditorPage() {
   const [description, setDescription] = useState('');
   const [showExplanations, setShowExplanations] = useState(true);
   const [isPublished, setIsPublished] = useState(false);
+  const [notifyOnSave, setNotifyOnSave] = useState(false);
   const [questions, setQuestions] = useState<AdminQuestionDraft[]>([createEmptyQuestion()]);
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [pushNotice, setPushNotice] = useState<{ tone: 'success' | 'info' | 'error'; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [sendingPush, setSendingPush] = useState(false);
 
   const loadEditor = useCallback(async () => {
     setLoading(true);
@@ -228,6 +232,7 @@ export function AdminTestEditorPage() {
     e.preventDefault();
     setFormError(null);
     setSaveSuccess(null);
+    setPushNotice(null);
 
     const targetTopicId = attachMode === 'topic' ? topicId || null : null;
     const targetLessonId = attachMode === 'lesson' ? lessonId || null : null;
@@ -260,8 +265,42 @@ export function AdminTestEditorPage() {
     }
 
     setSaveSuccess('Test and questions saved.');
+
+    if (isPublished && notifyOnSave) {
+      setSendingPush(true);
+      const pushRes = await triggerPushNotification({
+        type: 'test',
+        testId: res.testId,
+        onlyUnattempted: false,
+      });
+      setSendingPush(false);
+      if (pushRes.error) {
+        setPushNotice({ tone: 'error', message: `Test saved, but push failed: ${pushRes.error}` });
+      } else if (pushRes.result) {
+        setPushNotice({ tone: 'success', message: pushRes.result.message });
+      }
+      setNotifyOnSave(false);
+    }
+
     if (!isEditing) {
       navigate(`/admin/tests/${res.testId}`, { replace: true });
+    }
+  }
+
+  async function handleSendTestPush(onlyUnattempted: boolean) {
+    if (!testId || !isPublished) return;
+    setPushNotice(null);
+    setSendingPush(true);
+    const pushRes = await triggerPushNotification({
+      type: 'test',
+      testId,
+      onlyUnattempted,
+    });
+    setSendingPush(false);
+    if (pushRes.error) {
+      setPushNotice({ tone: 'error', message: pushRes.error });
+    } else if (pushRes.result) {
+      setPushNotice({ tone: 'success', message: pushRes.result.message });
     }
   }
 
@@ -270,27 +309,53 @@ export function AdminTestEditorPage() {
 
   return (
     <div className="max-w-4xl space-y-6">
-      <div className="space-y-1">
-        <Link
-          to="/admin/tests"
-          className="inline-flex items-center gap-1.5 min-h-[40px] text-sm font-medium text-slate-600 hover:text-slate-900"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          <span>Back to Tests</span>
-        </Link>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-          {isEditing ? 'Edit Test' : 'Create Test'}
-        </h1>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-1">
+          <Link
+            to="/admin/tests"
+            className="inline-flex items-center gap-1.5 min-h-[40px] text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            <span>Back to Tests</span>
+          </Link>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+            {isEditing ? 'Edit Test' : 'Create Test'}
+          </h1>
+        </div>
+
+        {isEditing && isPublished && testId && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              loading={sendingPush}
+              onClick={() => void handleSendTestPush(false)}
+            >
+              <BellRing className="h-4 w-4" aria-hidden="true" />
+              <span>Notify All Enrolled</span>
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              loading={sendingPush}
+              onClick={() => void handleSendTestPush(true)}
+            >
+              <BellRing className="h-4 w-4" aria-hidden="true" />
+              <span>Remind Unattempted</span>
+            </Button>
+          </div>
+        )}
       </div>
 
       <AdminNav />
 
       {formError && <Alert tone="error">{formError}</Alert>}
       {saveSuccess && <Alert tone="success">{saveSuccess}</Alert>}
+      {pushNotice && <Alert tone={pushNotice.tone}>{pushNotice.message}</Alert>}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card padding="lg" className="space-y-4">
-          <h2 className="text-base font-bold text-slate-900">Test settings &amp; attachment</h2>
+          <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">Test settings &amp; attachment</h2>
 
           <Input
             label="Test title"
@@ -301,7 +366,7 @@ export function AdminTestEditorPage() {
           />
 
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-slate-900">
+            <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">
               Instructions / description (optional)
             </label>
             <textarea
@@ -309,21 +374,21 @@ export function AdminTestEditorPage() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Brief instructions shown before the student starts"
-              className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600"
+              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600 dark:focus:border-phosters-500"
             />
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-900">Attach test to</p>
-            <div className="inline-flex p-1 bg-slate-100 rounded-lg gap-1">
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Attach test to</p>
+            <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800 rounded-lg gap-1">
               <button
                 type="button"
                 onClick={() => setAttachMode('lesson')}
                 className={[
                   'min-h-[38px] px-3.5 py-1.5 rounded-md text-sm font-medium cursor-pointer transition-colors',
                   attachMode === 'lesson'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900',
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100',
                 ].join(' ')}
               >
                 Specific Lesson
@@ -334,8 +399,8 @@ export function AdminTestEditorPage() {
                 className={[
                   'min-h-[38px] px-3.5 py-1.5 rounded-md text-sm font-medium cursor-pointer transition-colors',
                   attachMode === 'topic'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900',
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100',
                 ].join(' ')}
               >
                 Whole Topic
@@ -345,7 +410,7 @@ export function AdminTestEditorPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-slate-900">
+              <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">
                 Examination
               </label>
               <select
@@ -353,7 +418,7 @@ export function AdminTestEditorPage() {
                 onChange={(e) =>
                   handleExamOrSubjectChange(e.target.value, selectedSubjectId)
                 }
-                className="w-full min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
               >
                 {exams.map((ex) => (
                   <option key={ex.id} value={ex.id}>
@@ -364,13 +429,13 @@ export function AdminTestEditorPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-slate-900">Subject</label>
+              <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">Subject</label>
               <select
                 value={selectedSubjectId}
                 onChange={(e) =>
                   handleExamOrSubjectChange(selectedExamId, e.target.value)
                 }
-                className="w-full min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
               >
                 {subjects.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -381,11 +446,11 @@ export function AdminTestEditorPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-slate-900">Topic</label>
+              <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">Topic</label>
               <select
                 value={topicId}
                 onChange={(e) => handleTopicChange(e.target.value)}
-                className="w-full min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
               >
                 {matchingTopics.length === 0 ? (
                   <option value="">No topics for this exam &amp; subject</option>
@@ -401,11 +466,11 @@ export function AdminTestEditorPage() {
 
             {attachMode === 'lesson' && (
               <div className="space-y-1.5">
-                <label className="block text-sm font-medium text-slate-900">Lesson</label>
+                <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">Lesson</label>
                 <select
                   value={lessonId}
                   onChange={(e) => setLessonId(e.target.value)}
-                  className="w-full min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                  className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
                 >
                   {matchingLessons.length === 0 ? (
                     <option value="">No lessons in this topic yet</option>
@@ -427,30 +492,46 @@ export function AdminTestEditorPage() {
                 type="checkbox"
                 checked={showExplanations}
                 onChange={(e) => setShowExplanations(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-phosters-600 focus:ring-phosters-600"
+                className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600"
               />
-              <span className="text-sm font-medium text-slate-800">
+              <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
                 Show correct answers &amp; explanations after submission
               </span>
             </label>
 
-            <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isPublished}
-                onChange={(e) => setIsPublished(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-phosters-600 focus:ring-phosters-600"
-              />
-              <span className="text-sm font-medium text-slate-800">
-                Published (students can take this test)
-              </span>
-            </label>
+            <div className="space-y-1">
+              <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isPublished}
+                  onChange={(e) => setIsPublished(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600"
+                />
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                  Published (students can take this test)
+                </span>
+              </label>
+
+              {isPublished && (
+                <label className="flex items-center gap-2.5 min-h-[40px] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={notifyOnSave}
+                    onChange={(e) => setNotifyOnSave(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600"
+                  />
+                  <span className="text-sm font-medium text-phosters-700 dark:text-phosters-400">
+                    Send native push notification to enrolled students when saved
+                  </span>
+                </label>
+              )}
+            </div>
           </div>
         </Card>
 
         <section aria-labelledby="questions-heading" className="space-y-4">
           <div className="flex items-center justify-between gap-3">
-            <h2 id="questions-heading" className="text-lg font-bold text-slate-900">
+            <h2 id="questions-heading" className="text-lg font-bold text-slate-900 dark:text-slate-100">
               Questions ({questions.length})
             </h2>
             <Button
@@ -468,7 +549,7 @@ export function AdminTestEditorPage() {
           {questions.map((q, qIndex) => (
             <Card key={q.localKey} padding="lg" className="space-y-4">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-bold text-slate-900 tabular-nums">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 tabular-nums">
                   Question {qIndex + 1}
                 </h3>
                 <div className="flex items-center gap-1.5">
@@ -477,7 +558,7 @@ export function AdminTestEditorPage() {
                     aria-label={`Move question ${qIndex + 1} up`}
                     disabled={qIndex === 0}
                     onClick={() => moveQuestion(qIndex, -1)}
-                    className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 bg-white text-slate-700 disabled:opacity-40 cursor-pointer"
+                    className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 cursor-pointer"
                   >
                     <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
@@ -486,7 +567,7 @@ export function AdminTestEditorPage() {
                     aria-label={`Move question ${qIndex + 1} down`}
                     disabled={qIndex === questions.length - 1}
                     onClick={() => moveQuestion(qIndex, 1)}
-                    className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 bg-white text-slate-700 disabled:opacity-40 cursor-pointer"
+                    className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 cursor-pointer"
                   >
                     <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
@@ -499,7 +580,7 @@ export function AdminTestEditorPage() {
                           prev.filter((_, idx) => idx !== qIndex)
                         )
                       }
-                      className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 bg-white text-red-600 hover:bg-red-50 cursor-pointer"
+                      className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
                     >
                       <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                     </button>
@@ -509,7 +590,7 @@ export function AdminTestEditorPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <div className="sm:col-span-3 space-y-1.5">
-                  <label className="block text-sm font-medium text-slate-900">
+                  <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">
                     Question text
                   </label>
                   <textarea
@@ -525,7 +606,7 @@ export function AdminTestEditorPage() {
                       )
                     }
                     placeholder="Enter the question..."
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600"
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600 dark:focus:border-phosters-500"
                     required
                   />
                 </div>
@@ -549,14 +630,14 @@ export function AdminTestEditorPage() {
 
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-slate-700">
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                     Answer options (select the one correct answer)
                   </p>
                   {q.options.length < OPTION_KEYS.length && (
                     <button
                       type="button"
                       onClick={() => addOptionToQuestion(qIndex)}
-                      className="text-xs font-semibold text-phosters-700 hover:underline cursor-pointer"
+                      className="text-xs font-semibold text-phosters-700 dark:text-phosters-400 hover:underline cursor-pointer"
                     >
                       + Add option
                     </button>
@@ -566,7 +647,7 @@ export function AdminTestEditorPage() {
                 <div className="space-y-2">
                   {q.options.map((opt, optIdx) => (
                     <div key={opt.localKey} className="flex items-center gap-2.5">
-                      <label className="inline-flex items-center gap-2 min-h-[44px] px-2.5 rounded-lg border border-slate-200 bg-slate-50 cursor-pointer shrink-0">
+                      <label className="inline-flex items-center gap-2 min-h-[44px] px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 cursor-pointer shrink-0">
                         <input
                           type="radio"
                           name={`correct-${q.localKey}`}
@@ -574,7 +655,7 @@ export function AdminTestEditorPage() {
                           onChange={() => setCorrectOption(qIndex, optIdx)}
                           className="h-4 w-4 text-phosters-600 focus:ring-phosters-600"
                         />
-                        <span className="text-xs font-mono font-semibold text-slate-800">
+                        <span className="text-xs font-mono font-semibold text-slate-800 dark:text-slate-200">
                           {opt.option_key}
                         </span>
                       </label>
@@ -599,7 +680,7 @@ export function AdminTestEditorPage() {
                             )
                           )
                         }
-                        className="flex-1 min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600"
+                        className="flex-1 min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600 dark:focus:border-phosters-500"
                         required
                       />
 
@@ -608,7 +689,7 @@ export function AdminTestEditorPage() {
                           type="button"
                           aria-label={`Remove option ${opt.option_key}`}
                           onClick={() => removeOptionFromQuestion(qIndex, optIdx)}
-                          className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-200 text-red-600 hover:bg-red-50 cursor-pointer shrink-0"
+                          className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer shrink-0"
                         >
                           <Trash2 className="h-4 w-4" aria-hidden="true" />
                         </button>
@@ -639,7 +720,7 @@ export function AdminTestEditorPage() {
         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
           <Link
             to="/admin/tests"
-            className="inline-flex items-center justify-center min-h-[48px] px-5 py-3 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
+            className="inline-flex items-center justify-center min-h-[48px] px-5 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
           >
             Back to Tests
           </Link>

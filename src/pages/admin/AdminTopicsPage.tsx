@@ -167,8 +167,8 @@ export function AdminTopicsPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Topics</h1>
-        <p className="text-sm text-slate-600">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Topics</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-300">
           Organise each examination and subject into ordered syllabus topics.
         </p>
       </div>
@@ -182,14 +182,14 @@ export function AdminTopicsPage() {
         <div className="lg:col-span-5">
           <Card padding="lg">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-base font-bold text-slate-900">
+              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
                 {editingId ? 'Edit topic' : 'Create topic'}
               </h2>
               {editingId && (
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="text-xs font-semibold text-phosters-700 hover:underline cursor-pointer"
+                  className="text-xs font-semibold text-phosters-700 dark:text-phosters-400 hover:underline cursor-pointer"
                 >
                   + New instead
                 </button>
@@ -198,13 +198,13 @@ export function AdminTopicsPage() {
 
             <form onSubmit={handleSubmit} className="mt-4 space-y-4">
               <div className="space-y-1.5">
-                <label className="block text-sm font-medium text-slate-900">
+                <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">
                   Examination
                 </label>
                 <select
                   value={examId}
                   onChange={(e) => setExamId(e.target.value)}
-                  className="w-full min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                  className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
                   required
                 >
                   {exams.map((ex) => (
@@ -216,13 +216,13 @@ export function AdminTopicsPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-sm font-medium text-slate-900">
+                <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">
                   Subject
                 </label>
                 <select
                   value={subjectId}
                   onChange={(e) => setSubjectId(e.target.value)}
-                  className="w-full min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                  className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
                   required
                 >
                   {subjects.map((s) => (
@@ -242,14 +242,14 @@ export function AdminTopicsPage() {
               />
 
               <div className="space-y-1.5">
-                <label className="block text-sm font-medium text-slate-900">
+                <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">
                   Description (optional)
                 </label>
                 <textarea
                   rows={2}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600 dark:focus:border-phosters-500"
                 />
               </div>
 
@@ -266,9 +266,9 @@ export function AdminTopicsPage() {
                   type="checkbox"
                   checked={isPublished}
                   onChange={(e) => setIsPublished(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-phosters-600 focus:ring-phosters-600"
+                  className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600"
                 />
-                <span className="text-sm font-medium text-slate-800">
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
                   Published (visible to enrolled students)
                 </span>
               </label>
@@ -286,7 +286,7 @@ export function AdminTopicsPage() {
               aria-label="Filter by examination"
               value={filterExamId}
               onChange={(e) => setFilterExamId(e.target.value)}
-              className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+              className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
             >
               <option value="all">All examinations</option>
               {exams.map((ex) => (
@@ -300,7 +300,7 @@ export function AdminTopicsPage() {
               aria-label="Filter by subject"
               value={filterSubjectId}
               onChange={(e) => setFilterSubjectId(e.target.value)}
-              className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+              className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
             >
               <option value="all">All subjects</option>
               {subjects.map((s) => (
@@ -312,19 +312,19 @@ export function AdminTopicsPage() {
           </Card>
 
           <Card padding="none" className="overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900">Topics list</h2>
-              <span className="text-xs text-slate-500 tabular-nums">
+            <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Topics list</h2>
+              <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                 {filteredTopics.length} shown
               </span>
             </div>
 
             {filteredTopics.length === 0 ? (
-              <div className="p-6 text-center text-sm text-slate-500">
+              <div className="p-6 text-center text-sm text-slate-500 dark:text-slate-400">
                 No topics match the selected filters yet.
               </div>
             ) : (
-              <ul className="divide-y divide-slate-100">
+              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredTopics.map((topic) => {
                   const examName = examMap.get(topic.exam_id)?.name ?? 'Exam';
                   const subjectName = subjectMap.get(topic.subject_id)?.name ?? 'Subject';
@@ -334,16 +334,16 @@ export function AdminTopicsPage() {
                     <li key={topic.id} className="p-4 space-y-3">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-900">
+                          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                             {topic.title}
                           </p>
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
                             {examName} · {subjectName} · Order {topic.display_order} ·{' '}
                             <span
                               className={
                                 topic.is_published
-                                  ? 'font-medium text-phosters-700'
-                                  : 'font-medium text-amber-700'
+                                  ? 'font-medium text-phosters-700 dark:text-phosters-400'
+                                  : 'font-medium text-amber-700 dark:text-amber-400'
                               }
                             >
                               {topic.is_published ? 'Published' : 'Draft'}
@@ -367,7 +367,7 @@ export function AdminTopicsPage() {
                             onClick={() =>
                               setConfirmDeleteId(isConfirming ? null : topic.id)
                             }
-                            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-200 text-red-600 hover:bg-red-50 cursor-pointer"
+                            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
                           >
                             <Trash2 className="h-4 w-4" aria-hidden="true" />
                           </button>
@@ -375,7 +375,7 @@ export function AdminTopicsPage() {
                       </div>
 
                       {isConfirming && (
-                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-900">
+                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/70 p-3 text-xs text-red-900 dark:text-red-200">
                           <span>Delete this topic and all lessons inside it?</span>
                           <div className="flex items-center gap-2">
                             <Button

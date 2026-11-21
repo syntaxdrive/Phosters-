@@ -169,7 +169,7 @@ export function LessonPage() {
       <div className="flex items-center justify-between gap-3">
         <Link
           to={`/app/subjects/${exam.slug}/${subject.slug}`}
-          className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 hover:text-slate-900"
+          className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           <span className="truncate max-w-[240px] sm:max-w-none">
@@ -179,7 +179,7 @@ export function LessonPage() {
         {isAdmin && (
           <Link
             to={`/admin/lessons/${lesson.id}`}
-            className="text-sm font-semibold text-phosters-700 hover:underline shrink-0"
+            className="text-sm font-semibold text-phosters-700 dark:text-phosters-400 hover:underline shrink-0"
           >
             Edit in Admin
           </Link>
@@ -199,7 +199,7 @@ export function LessonPage() {
       {/* Video Player: sticky at top on mobile while scrolling lesson details */}
       <div
         className={[
-          '-mx-4 sm:mx-0 bg-slate-950 sm:rounded-xl overflow-hidden border-b sm:border border-slate-200',
+          '-mx-4 sm:mx-0 bg-slate-950 sm:rounded-xl overflow-hidden border-b sm:border border-slate-200 dark:border-slate-800',
           isStickyMobileVideo ? 'sticky top-0 z-20 md:static' : '',
         ].join(' ')}
       >
@@ -233,7 +233,7 @@ export function LessonPage() {
         <button
           type="button"
           onClick={() => setIsStickyMobileVideo((v) => !v)}
-          className="inline-flex items-center gap-1.5 min-h-[40px] px-2.5 text-xs font-medium text-slate-600 hover:text-slate-900 cursor-pointer"
+          className="inline-flex items-center gap-1.5 min-h-[40px] px-2.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 cursor-pointer"
         >
           {isStickyMobileVideo ? (
             <>
@@ -253,19 +253,19 @@ export function LessonPage() {
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-medium text-phosters-700">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-medium text-phosters-700 dark:text-phosters-400">
               <span>{exam.name}</span>
               <span aria-hidden="true">·</span>
               <span>{subject.name}</span>
               <span aria-hidden="true">·</span>
               <span>{topic.title}</span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
               {lesson.title}
             </h1>
             {lesson.tutor_name && (
-              <p className="text-sm text-slate-600">
-                Tutor: <span className="font-medium text-slate-900">{lesson.tutor_name}</span>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Tutor: <span className="font-medium text-slate-900 dark:text-slate-100">{lesson.tutor_name}</span>
               </p>
             )}
           </div>
@@ -278,7 +278,7 @@ export function LessonPage() {
           >
             {isCompleted ? (
               <>
-                <CheckCircle2 className="h-4 w-4 text-phosters-600" aria-hidden="true" />
+                <CheckCircle2 className="h-4 w-4 text-phosters-600 dark:text-phosters-400" aria-hidden="true" />
                 <span>Completed</span>
               </>
             ) : (
@@ -292,8 +292,8 @@ export function LessonPage() {
 
         {(lesson.description || lesson.short_description) && (
           <Card padding="md">
-            <h2 className="text-sm font-bold text-slate-900">Lesson notes &amp; overview</h2>
-            <p className="mt-2 text-sm sm:text-base text-slate-700 leading-relaxed whitespace-pre-line">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Lesson notes &amp; overview</h2>
+            <p className="mt-2 text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
               {lesson.description || lesson.short_description}
             </p>
           </Card>
@@ -302,7 +302,7 @@ export function LessonPage() {
 
       {/* Learning Materials (Direct file access without exposing GitHub branding) */}
       <section aria-labelledby="materials-heading" className="space-y-3">
-        <h2 id="materials-heading" className="text-base font-bold text-slate-900">
+        <h2 id="materials-heading" className="text-base font-bold text-slate-900 dark:text-slate-100">
           Learning materials
         </h2>
 
@@ -312,7 +312,7 @@ export function LessonPage() {
 
         {materials.length === 0 ? (
           <Card padding="md">
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               No downloadable study materials are attached to this lesson yet.
             </p>
           </Card>
@@ -328,11 +328,11 @@ export function LessonPage() {
                   className="flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                 >
                   <div className="min-w-0 space-y-0.5">
-                    <p className="text-sm font-semibold text-slate-900">{mat.title}</p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{mat.title}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
                       {fileTypeLabels[mat.file_type]}
                       {!validation.valid && (
-                        <span className="text-red-600"> · Link unavailable</span>
+                        <span className="text-red-600 dark:text-red-400"> · Link unavailable</span>
                       )}
                     </p>
                   </div>
@@ -351,7 +351,7 @@ export function LessonPage() {
                     }
                     className="self-start sm:self-auto"
                   >
-                    <FileDown className="h-4 w-4 text-phosters-700" aria-hidden="true" />
+                    <FileDown className="h-4 w-4 text-phosters-700 dark:text-phosters-400" aria-hidden="true" />
                     <span>Download {mat.title}</span>
                   </Button>
                 </Card>
@@ -364,17 +364,17 @@ export function LessonPage() {
       {/* Important Links */}
       {safeLinks.length > 0 && (
         <section aria-labelledby="links-heading" className="space-y-3">
-          <h2 id="links-heading" className="text-base font-bold text-slate-900">
+          <h2 id="links-heading" className="text-base font-bold text-slate-900 dark:text-slate-100">
             Important links
           </h2>
-          <Card padding="none" className="divide-y divide-slate-100">
+          <Card padding="none" className="divide-y divide-slate-100 dark:divide-slate-800">
             {safeLinks.map((linkItem) => (
               <a
                 key={linkItem.id}
                 href={linkItem.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-between gap-3 px-4 py-3.5 min-h-[48px] text-sm font-medium text-phosters-700 hover:bg-slate-50 transition-colors"
+                className="flex items-center justify-between gap-3 px-4 py-3.5 min-h-[48px] text-sm font-medium text-phosters-700 dark:text-phosters-400 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
               >
                 <span className="truncate">{linkItem.title}</span>
                 <ExternalLink className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -387,7 +387,7 @@ export function LessonPage() {
       {/* Attached Practice Tests */}
       {attachedTests.length > 0 && (
         <section aria-labelledby="tests-heading" className="space-y-3">
-          <h2 id="tests-heading" className="text-base font-bold text-slate-900">
+          <h2 id="tests-heading" className="text-base font-bold text-slate-900 dark:text-slate-100">
             Practice tests
           </h2>
           <div className="space-y-2.5">
@@ -395,16 +395,16 @@ export function LessonPage() {
               <Card
                 key={tst.id}
                 padding="md"
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-phosters-200 bg-phosters-50/40"
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-phosters-200 dark:border-phosters-800 bg-phosters-50/40 dark:bg-phosters-900/25"
               >
                 <div className="flex items-start gap-3 min-w-0">
-                  <div className="h-9 w-9 rounded-lg bg-phosters-100 text-phosters-700 flex items-center justify-center shrink-0">
+                  <div className="h-9 w-9 rounded-lg bg-phosters-100 dark:bg-phosters-900/70 text-phosters-700 dark:text-phosters-300 flex items-center justify-center shrink-0">
                     <CheckSquare className="h-4 w-4" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-900">{tst.title}</p>
+                    <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{tst.title}</p>
                     {tst.description && (
-                      <p className="mt-0.5 text-xs text-slate-600">{tst.description}</p>
+                      <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">{tst.description}</p>
                     )}
                   </div>
                 </div>
@@ -428,12 +428,12 @@ export function LessonPage() {
         {previousLesson ? (
           <Link
             to={`/app/lessons/${previousLesson.id}`}
-            className="flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:border-phosters-600 transition-colors min-h-[60px]"
+            className="flex items-center gap-3 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-phosters-600 dark:hover:border-phosters-500 transition-colors min-h-[60px]"
           >
-            <ArrowLeft className="h-4 w-4 text-slate-500 shrink-0" aria-hidden="true" />
+            <ArrowLeft className="h-4 w-4 text-slate-500 dark:text-slate-400 shrink-0" aria-hidden="true" />
             <div className="min-w-0">
-              <span className="block text-xs text-slate-500">Previous lesson</span>
-              <span className="block text-sm font-semibold text-slate-900 truncate">
+              <span className="block text-xs text-slate-500 dark:text-slate-400">Previous lesson</span>
+              <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
                 {previousLesson.title}
               </span>
             </div>
@@ -445,15 +445,15 @@ export function LessonPage() {
         {nextLesson && (
           <Link
             to={`/app/lessons/${nextLesson.id}`}
-            className="flex items-center justify-between gap-3 p-4 rounded-xl border border-slate-200 bg-white hover:border-phosters-600 transition-colors min-h-[60px]"
+            className="flex items-center justify-between gap-3 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-phosters-600 dark:hover:border-phosters-500 transition-colors min-h-[60px]"
           >
             <div className="min-w-0">
-              <span className="block text-xs text-slate-500">Next lesson</span>
-              <span className="block text-sm font-semibold text-slate-900 truncate">
+              <span className="block text-xs text-slate-500 dark:text-slate-400">Next lesson</span>
+              <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
                 {nextLesson.title}
               </span>
             </div>
-            <ArrowRight className="h-4 w-4 text-phosters-700 shrink-0" aria-hidden="true" />
+            <ArrowRight className="h-4 w-4 text-phosters-700 dark:text-phosters-400 shrink-0" aria-hidden="true" />
           </Link>
         )}
       </nav>
@@ -461,7 +461,7 @@ export function LessonPage() {
       {/* Related Lessons */}
       {relatedLessons.length > 0 && (
         <section aria-labelledby="related-heading" className="space-y-3 pt-2">
-          <h2 id="related-heading" className="text-base font-bold text-slate-900">
+          <h2 id="related-heading" className="text-base font-bold text-slate-900 dark:text-slate-100">
             Related lessons in {subject.name}
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -469,17 +469,17 @@ export function LessonPage() {
               <Link
                 key={rel.id}
                 to={`/app/lessons/${rel.id}`}
-                className="block p-4 rounded-xl border border-slate-200 bg-white hover:border-phosters-600 transition-colors"
+                className="block p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-phosters-600 dark:hover:border-phosters-500 transition-colors"
               >
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   {rel.topicTitle}
                   {rel.isCompleted ? ' · Completed' : ''}
                 </p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
                   {rel.title}
                 </p>
                 {rel.short_description && (
-                  <p className="mt-1 text-xs text-slate-600 line-clamp-2">
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
                     {rel.short_description}
                   </p>
                 )}

@@ -21,6 +21,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    return hashParams.get('type') === 'recovery';
+  });
 
   const activeUserIdRef = useRef<string | null>(null);
 
@@ -83,10 +88,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       activeUserIdRef.current = nextUserId;
       setLoading(false);
 
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecovery(true);
+      }
+
       if (!nextUser) {
         setProfile(null);
         setProfileError(null);
         setProfileLoading(false);
+        setIsPasswordRecovery(false);
         return;
       }
 
@@ -114,6 +124,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return signInWithEmail(input);
   }, []);
 
+  const clearPasswordRecovery = useCallback(() => {
+    setIsPasswordRecovery(false);
+  }, []);
+
   const handleSignOut = useCallback(async () => {
     const result = await signOutCurrentUser();
     if (!result.error) {
@@ -122,6 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setProfile(null);
       setProfileError(null);
+      setIsPasswordRecovery(false);
     }
     return result;
   }, []);
@@ -131,7 +146,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const handleUpdatePassword = useCallback(async (newPassword: string) => {
-    return updateCurrentUserPassword(newPassword);
+    const res = await updateCurrentUserPassword(newPassword);
+    if (!res.error) {
+      setIsPasswordRecovery(false);
+    }
+    return res;
   }, []);
 
   const handleUpdateProfile = useCallback(
@@ -158,6 +177,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       user,
       profile,
+      isPasswordRecovery,
+      clearPasswordRecovery,
       signUp: handleSignUp,
       signIn: handleSignIn,
       signOut: handleSignOut,
@@ -173,6 +194,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       user,
       profile,
+      isPasswordRecovery,
+      clearPasswordRecovery,
       handleSignUp,
       handleSignIn,
       handleSignOut,

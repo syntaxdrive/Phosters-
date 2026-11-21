@@ -8,9 +8,9 @@ export function NotFoundPage() {
   return (
     <div className="max-w-md mx-auto py-10">
       <Card padding="lg" className="text-center space-y-4">
-        <p className="text-sm font-mono font-medium text-slate-500">404</p>
-        <h1 className="text-xl font-bold text-slate-900">Page not found</h1>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm font-mono font-medium text-slate-500 dark:text-slate-400">404</p>
+        <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">Page not found</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-400">
           The page you requested does not exist or has been moved.
         </p>
         <div className="pt-2">

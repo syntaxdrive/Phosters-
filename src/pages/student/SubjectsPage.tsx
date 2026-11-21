@@ -59,8 +59,8 @@ export function SubjectsPage() {
     return (
       <div className="space-y-6">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Subjects</h1>
-          <p className="text-sm text-slate-600">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">Subjects</h1>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             Select your examination profile to access your subjects and lessons.
           </p>
         </div>
@@ -90,17 +90,17 @@ export function SubjectsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Subjects</h1>
-          <p className="text-sm text-slate-600">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">Subjects</h1>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             Open a subject to browse topics and video lessons.
           </p>
         </div>
 
         <Link
           to="/app/setup-exams"
-          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors self-start sm:self-auto"
+          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors self-start sm:self-auto"
         >
-          <Settings2 className="h-4 w-4 text-phosters-700" aria-hidden="true" />
+          <Settings2 className="h-4 w-4 text-phosters-700 dark:text-phosters-400" aria-hidden="true" />
           <span>Edit Subjects</span>
         </Link>
       </div>
@@ -109,7 +109,7 @@ export function SubjectsPage() {
         <div
           role="tablist"
           aria-label="Filter subjects by examination"
-          className="inline-flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg"
+          className="inline-flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg"
         >
           <button
             type="button"
@@ -119,8 +119,8 @@ export function SubjectsPage() {
             className={[
               'min-h-[40px] px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap',
               selectedExamSlug === 'all'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900',
+                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white',
             ].join(' ')}
           >
             All Examinations
@@ -135,8 +135,8 @@ export function SubjectsPage() {
               className={[
                 'min-h-[40px] px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap',
                 selectedExamSlug === e.exam.slug
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900',
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white',
               ].join(' ')}
             >
               {e.exam.name}
@@ -149,9 +149,9 @@ export function SubjectsPage() {
         {visibleEnrollments.map((enrollment) => (
           <section key={enrollment.profileId} className="space-y-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-lg font-bold text-slate-900">{enrollment.exam.name}</h2>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{enrollment.exam.name}</h2>
               {enrollment.intendedCourse && (
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
                   Intended course: {enrollment.intendedCourse}
                 </span>
               )}
@@ -159,11 +159,11 @@ export function SubjectsPage() {
 
             {enrollment.selectedSubjects.length === 0 ? (
               <Card padding="md">
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-slate-600 dark:text-slate-400">
                   No subjects selected for {enrollment.exam.name}.{' '}
                   <Link
                     to="/app/setup-exams"
-                    className="font-semibold text-phosters-700 hover:underline"
+                    className="font-semibold text-phosters-700 dark:text-phosters-400 hover:underline"
                   >
                     Add subjects
                   </Link>
@@ -178,23 +178,23 @@ export function SubjectsPage() {
                     <Link
                       key={`${enrollment.exam.id}-${subject.id}`}
                       to={`/app/subjects/${enrollment.exam.slug}/${subject.slug}`}
-                      className="group block bg-white border border-slate-200 rounded-xl p-5 hover:border-phosters-600 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-phosters-600"
+                      className="group block bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 hover:border-phosters-600 dark:hover:border-phosters-500 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-phosters-600"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <h3 className="text-base font-bold text-slate-900 group-hover:text-phosters-700 transition-colors">
+                        <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 group-hover:text-phosters-700 dark:group-hover:text-phosters-400 transition-colors">
                           {subject.name}
                         </h3>
                         <ArrowRight
-                          className="h-4 w-4 text-slate-400 group-hover:text-phosters-700 shrink-0 mt-1"
+                          className="h-4 w-4 text-slate-400 group-hover:text-phosters-700 dark:group-hover:text-phosters-400 shrink-0 mt-1"
                           aria-hidden="true"
                         />
                       </div>
                       {subject.description && (
-                        <p className="mt-1.5 text-sm text-slate-600 line-clamp-2">
+                        <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400 line-clamp-2">
                           {subject.description}
                         </p>
                       )}
-                      <p className="mt-3 text-xs font-medium text-slate-500 tabular-nums">
+                      <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums">
                         {count === 1 ? '1 published lesson' : `${count} published lessons`}
                       </p>
                     </Link>

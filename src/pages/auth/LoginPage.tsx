@@ -10,7 +10,7 @@ import { SetupRequiredNotice } from '../../components/ui/SetupRequiredNotice';
 import { LoadingState } from '../../components/ui/States';
 
 export function LoginPage() {
-  const { isConfigured, configError, loading, user, signIn } = useAuth();
+  const { isConfigured, configError, loading, user, isPasswordRecovery, signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -27,6 +27,10 @@ export function LoginPage() {
 
   if (loading) {
     return <LoadingState message="Checking your session..." />;
+  }
+
+  if (isPasswordRecovery) {
+    return <Navigate to="/reset-password" replace />;
   }
 
   if (user) {
@@ -64,17 +68,24 @@ export function LoginPage() {
     <div className="max-w-md mx-auto py-4 sm:py-10">
       <Card padding="lg">
         <div className="space-y-1.5">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             Sign in to Phosters
           </h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             Continue your JAMB UTME and UI Post-UTME preparation.
           </p>
         </div>
 
         {formError && (
           <Alert tone="error" className="mt-5">
-            {formError}
+            <span>{formError}</span>{' '}
+            <Link
+              to="/forgot-password"
+              state={{ email }}
+              className="font-semibold underline hover:text-red-950 dark:hover:text-red-100"
+            >
+              Forgot your password?
+            </Link>
           </Alert>
         )}
 
@@ -112,9 +123,10 @@ export function LoginPage() {
             <div className="flex justify-end">
               <Link
                 to="/forgot-password"
-                className="text-xs font-medium text-phosters-700 hover:text-phosters-800 hover:underline py-1"
+                state={{ email }}
+                className="inline-flex items-center min-h-[36px] py-1 text-sm font-semibold text-phosters-700 dark:text-phosters-400 hover:text-phosters-800 dark:hover:text-phosters-300 hover:underline"
               >
-                Forgot your password?
+                Forgot password?
               </Link>
             </div>
           </div>
@@ -124,11 +136,11 @@ export function LoginPage() {
           </Button>
         </form>
 
-        <p className="mt-6 pt-5 border-t border-slate-100 text-center text-sm text-slate-600">
+        <p className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-center text-sm text-slate-600 dark:text-slate-400">
           New to Phosters?{' '}
           <Link
             to="/signup"
-            className="font-semibold text-phosters-700 hover:text-phosters-800 hover:underline"
+            className="font-semibold text-phosters-700 dark:text-phosters-400 hover:text-phosters-800 dark:hover:text-phosters-300 hover:underline"
           >
             Create a student account
           </Link>

@@ -74,7 +74,7 @@ export function SubjectDetailPage() {
       <div className="max-w-xl mx-auto space-y-4">
         <Link
           to="/app/subjects"
-          className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 hover:text-slate-900"
+          className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           <span>Back to Subjects</span>
@@ -102,14 +102,14 @@ export function SubjectDetailPage() {
       <div className="space-y-2">
         <Link
           to="/app/subjects"
-          className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 hover:text-slate-900"
+          className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           <span>All Subjects</span>
         </Link>
 
         <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-x-2 text-xs font-medium text-phosters-700">
+          <div className="flex flex-wrap items-center gap-x-2 text-xs font-medium text-phosters-700 dark:text-phosters-400">
             <span>{exam?.name}</span>
             <span aria-hidden="true">·</span>
             <span className="tabular-nums">
@@ -120,11 +120,11 @@ export function SubjectDetailPage() {
               {totalLessons} {totalLessons === 1 ? 'lesson' : 'lessons'}
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             {subject?.name}
           </h1>
           {subject?.description && (
-            <p className="text-sm text-slate-600 max-w-2xl leading-relaxed">
+            <p className="text-sm text-slate-600 dark:text-slate-400 max-w-2xl leading-relaxed">
               {subject.description}
             </p>
           )}
@@ -146,7 +146,7 @@ export function SubjectDetailPage() {
           action={
             <Link
               to="/app/subjects"
-              className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
+              className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
               Back to Subjects
             </Link>
@@ -156,37 +156,37 @@ export function SubjectDetailPage() {
         <div className="space-y-5">
           {topics.map((topic, index) => (
             <Card key={topic.id} padding="none" className="overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/70">
+              <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h2 className="text-base font-bold text-slate-900">
+                  <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
                     {String(index + 1).padStart(2, '0')}. {topic.title}
                   </h2>
-                  <span className="text-xs text-slate-500 tabular-nums">
+                  <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                     {topic.lessons.length}{' '}
                     {topic.lessons.length === 1 ? 'lesson' : 'lessons'}
                   </span>
                 </div>
                 {topic.description && (
-                  <p className="mt-1 text-sm text-slate-600">{topic.description}</p>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{topic.description}</p>
                 )}
               </div>
 
               {topic.lessons.length === 0 && (testsByTopic.get(topic.id)?.length ?? 0) === 0 ? (
-                <div className="px-5 py-4 text-sm text-slate-500">
+                <div className="px-5 py-4 text-sm text-slate-500 dark:text-slate-400">
                   No published lessons in this topic yet.
                 </div>
               ) : (
-                <ul className="divide-y divide-slate-100">
+                <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                   {topic.lessons.map((lesson) => (
                     <li key={lesson.id}>
                       <Link
                         to={`/app/lessons/${lesson.id}`}
-                        className="flex items-center justify-between gap-4 px-5 py-3.5 min-h-[56px] hover:bg-slate-50 transition-colors focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-phosters-600"
+                        className="flex items-center justify-between gap-4 px-5 py-3.5 min-h-[56px] hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-phosters-600"
                       >
                         <div className="flex items-start gap-3 min-w-0">
                           {lesson.isCompleted ? (
                             <CheckCircle2
-                              className="h-5 w-5 text-phosters-600 shrink-0 mt-0.5"
+                              className="h-5 w-5 text-phosters-600 dark:text-phosters-400 shrink-0 mt-0.5"
                               aria-label="Completed"
                             />
                           ) : (
@@ -196,15 +196,15 @@ export function SubjectDetailPage() {
                             />
                           )}
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold text-slate-900">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                               {lesson.title}
                             </p>
                             {lesson.short_description && (
-                              <p className="mt-0.5 text-xs text-slate-600 line-clamp-2">
+                              <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
                                 {lesson.short_description}
                               </p>
                             )}
-                            <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                            <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-slate-500 dark:text-slate-400">
                               <span>{topic.title}</span>
                               {lesson.tutor_name && (
                                 <>
@@ -215,7 +215,7 @@ export function SubjectDetailPage() {
                               {lesson.isCompleted && (
                                 <>
                                   <span aria-hidden="true">·</span>
-                                  <span className="font-medium text-phosters-700">
+                                  <span className="font-medium text-phosters-700 dark:text-phosters-400">
                                     Completed
                                   </span>
                                 </>
@@ -231,27 +231,27 @@ export function SubjectDetailPage() {
                     </li>
                   ))}
                   {(testsByTopic.get(topic.id) ?? []).map((tst) => (
-                    <li key={tst.id} className="bg-phosters-50/40">
+                    <li key={tst.id} className="bg-phosters-50/40 dark:bg-phosters-900/20">
                       <Link
                         to={`/app/tests/${tst.id}`}
-                        className="flex items-center justify-between gap-4 px-5 py-3.5 min-h-[56px] hover:bg-phosters-50 transition-colors"
+                        className="flex items-center justify-between gap-4 px-5 py-3.5 min-h-[56px] hover:bg-phosters-50 dark:hover:bg-phosters-900/40 transition-colors"
                       >
                         <div className="flex items-start gap-3 min-w-0">
                           <CheckSquare
-                            className="h-5 w-5 text-phosters-700 shrink-0 mt-0.5"
+                            className="h-5 w-5 text-phosters-700 dark:text-phosters-400 shrink-0 mt-0.5"
                             aria-hidden="true"
                           />
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold text-slate-900">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                               {tst.title}
                             </p>
-                            <p className="mt-0.5 text-xs text-phosters-700 font-medium">
+                            <p className="mt-0.5 text-xs text-phosters-700 dark:text-phosters-400 font-medium">
                               Topic practice test
                             </p>
                           </div>
                         </div>
                         <ChevronRight
-                          className="h-4 w-4 text-phosters-700 shrink-0"
+                          className="h-4 w-4 text-phosters-700 dark:text-phosters-400 shrink-0"
                           aria-hidden="true"
                         />
                       </Link>

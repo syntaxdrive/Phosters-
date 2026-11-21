@@ -37,8 +37,8 @@ export function ResultsPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Test Results</h1>
-        <p className="text-sm text-slate-600">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">Test Results</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-400">
           Your submitted practice test scores and answer reviews.
         </p>
       </div>
@@ -58,7 +58,7 @@ export function ResultsPage() {
         />
       ) : (
         <Card padding="none" className="overflow-hidden">
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {attempts.map((attempt) => {
               const dateLabel = new Date(attempt.submitted_at).toLocaleDateString('en-NG', {
                 year: 'numeric',
@@ -69,18 +69,18 @@ export function ResultsPage() {
                 <li key={attempt.id}>
                   <Link
                     to={`/app/results/${attempt.id}`}
-                    className="flex items-center justify-between gap-4 px-5 py-4 min-h-[64px] hover:bg-slate-50 transition-colors"
+                    className="flex items-center justify-between gap-4 px-5 py-4 min-h-[64px] hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
                   >
                     <div className="min-w-0">
-                      <p className="text-sm sm:text-base font-semibold text-slate-900 truncate">
+                      <p className="text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 truncate">
                         {attempt.test_title}
                       </p>
-                      <p className="mt-0.5 text-xs text-slate-500 tabular-nums">
+                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                         {dateLabel} · Score {attempt.score} / {attempt.total_points}
                       </p>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-base font-bold text-phosters-700 tabular-nums">
+                      <span className="text-base font-bold text-phosters-700 dark:text-phosters-400 tabular-nums">
                         {Math.round(attempt.percentage)}%
                       </span>
                       <ChevronRight className="h-4 w-4 text-slate-400" aria-hidden="true" />

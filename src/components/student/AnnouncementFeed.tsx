@@ -35,8 +35,8 @@ export function AnnouncementFeed({
     <section aria-labelledby="announcements-heading" className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Megaphone className="h-4 w-4 text-phosters-700" aria-hidden="true" />
-          <h2 id="announcements-heading" className="text-base font-bold text-slate-900">
+          <Megaphone className="h-4 w-4 text-phosters-700 dark:text-phosters-400" aria-hidden="true" />
+          <h2 id="announcements-heading" className="text-base font-bold text-slate-900 dark:text-slate-100">
             {heading}
           </h2>
         </div>
@@ -45,7 +45,7 @@ export function AnnouncementFeed({
           <button
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
-            className="text-xs font-semibold text-phosters-700 hover:underline cursor-pointer min-h-[36px] px-1"
+            className="text-xs font-semibold text-phosters-700 dark:text-phosters-400 hover:underline cursor-pointer min-h-[36px] px-1"
           >
             {expanded ? 'Show fewer' : `Show all (${items.length})`}
           </button>
@@ -57,29 +57,33 @@ export function AnnouncementFeed({
           <Card
             key={item.id}
             padding="md"
-            className={item.is_pinned ? 'border-phosters-300 bg-phosters-50/40' : undefined}
+            className={
+              item.is_pinned
+                ? 'border-phosters-300 dark:border-phosters-700 bg-phosters-50/40 dark:bg-phosters-900/30'
+                : undefined
+            }
           >
             <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
                 {item.is_pinned && (
                   <>
-                    <span className="inline-flex items-center gap-1 font-semibold text-phosters-800">
+                    <span className="inline-flex items-center gap-1 font-semibold text-phosters-800 dark:text-phosters-300">
                       <Pin className="h-3 w-3" aria-hidden="true" />
                       <span>Pinned</span>
                     </span>
                     <span aria-hidden="true">·</span>
                   </>
                 )}
-                <span className="font-medium text-phosters-700">{item.audienceLabel}</span>
+                <span className="font-medium text-phosters-700 dark:text-phosters-400">{item.audienceLabel}</span>
                 <span aria-hidden="true">·</span>
                 <span>{formatDate(item.created_at)}</span>
               </div>
 
-              <h3 className="text-sm sm:text-base font-bold text-slate-900">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
                 {item.title}
               </h3>
 
-              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
+              <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
                 {item.message}
               </p>
 
@@ -91,7 +95,7 @@ export function AnnouncementFeed({
                       href={lnk.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 min-h-[40px] px-3.5 py-2 rounded-lg border border-slate-200 bg-white text-xs sm:text-sm font-semibold text-phosters-700 hover:border-phosters-600 hover:bg-slate-50 transition-colors"
+                      className="inline-flex items-center gap-1.5 min-h-[40px] px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs sm:text-sm font-semibold text-phosters-700 dark:text-phosters-300 hover:border-phosters-600 dark:hover:border-phosters-500 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                     >
                       <span>{lnk.title}</span>
                       <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -108,7 +112,7 @@ export function AnnouncementFeed({
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="text-xs font-semibold text-phosters-700 hover:underline cursor-pointer"
+          className="text-xs font-semibold text-phosters-700 dark:text-phosters-400 hover:underline cursor-pointer"
         >
           View {hiddenCount} earlier {hiddenCount === 1 ? 'announcement' : 'announcements'}
         </button>

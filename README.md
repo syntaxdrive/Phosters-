@@ -31,9 +31,18 @@ Copy `.env.example` to `.env` (or configure your hosting environment variables):
 ```env
 VITE_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
 VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_OR_PUBLISHABLE_KEY
+
+# Optional: Enable native Web Push notifications (generate with: npx web-push generate-vapid-keys)
+VITE_VAPID_PUBLIC_KEY=YOUR_PUBLIC_VAPID_KEY
+SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
+VAPID_PUBLIC_KEY=YOUR_PUBLIC_VAPID_KEY
+VAPID_PRIVATE_KEY=YOUR_PRIVATE_VAPID_KEY
+VAPID_SUBJECT=mailto:notifications@phosters.com
+CRON_SECRET=YOUR_RANDOM_CRON_SECRET
 ```
 
-Never place the Supabase `service_role` key in `.env` or any `VITE_*` variable.
+Never place `SUPABASE_SERVICE_ROLE_KEY`, `VAPID_PRIVATE_KEY`, or `CRON_SECRET` in any `VITE_*` variable.
 
 ### 3. Run the Database Migrations
 In your Supabase **SQL Editor**, run the migration scripts in order:
@@ -42,6 +51,7 @@ In your Supabase **SQL Editor**, run the migration scripts in order:
 3. `supabase/migrations/003_phase4_cbt_schema.sql` — creates `tests`, `questions`, `question_options`, `test_attempts`, `attempt_answers`, strict answer-key hiding RLS, and secure grading/review RPCs.
 4. `supabase/migrations/004_admin_student_statistics.sql` — creates the admin-only `get_admin_student_contacts()` RPC so admins can view student email addresses and last sign-in activity for follow-up emails.
 5. `supabase/migrations/005_admin_announcements.sql` — creates `announcements` and `announcement_links` with audience targeting and scoped RLS policies.
+6. `supabase/migrations/006_push_notifications.sql` — creates `push_subscriptions` and `push_notification_logs` for native background Web Push notifications and daily study/test reminders.
 
 ### 4. Configure Supabase Auth URLs
 In **Authentication -> URL Configuration**:

@@ -65,8 +65,8 @@ export function AdminTestsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Tests</h1>
-          <p className="text-sm text-slate-600">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Tests</h1>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
             Create multiple-choice tests, manage answer keys, and attach them to lessons or topics.
           </p>
         </div>
@@ -99,15 +99,15 @@ export function AdminTestsPage() {
         />
       ) : (
         <Card padding="none" className="overflow-hidden">
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {tests.map((t) => {
               const isConfirming = confirmDeleteId === t.id;
               return (
                 <li key={t.id} className="p-4 sm:p-5 space-y-3">
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div className="min-w-0 space-y-1">
-                      <p className="text-base font-semibold text-slate-900">{t.title}</p>
-                      <div className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                      <p className="text-base font-semibold text-slate-900 dark:text-slate-100">{t.title}</p>
+                      <div className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500 dark:text-slate-400">
                         <span>{t.targetLabel}</span>
                         <span aria-hidden="true">·</span>
                         <span className="tabular-nums">
@@ -124,8 +124,8 @@ export function AdminTestsPage() {
                         <span
                           className={
                             t.is_published
-                              ? 'font-medium text-phosters-700'
-                              : 'font-medium text-amber-700'
+                              ? 'font-medium text-phosters-700 dark:text-phosters-400'
+                              : 'font-medium text-amber-700 dark:text-amber-400'
                           }
                         >
                           {t.is_published ? 'Published' : 'Draft'}
@@ -143,7 +143,7 @@ export function AdminTestsPage() {
 
                       <Link
                         to={`/admin/tests/${t.id}`}
-                        className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
+                        className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                       >
                         Edit
                       </Link>
@@ -154,7 +154,7 @@ export function AdminTestsPage() {
                         onClick={() =>
                           setConfirmDeleteId(isConfirming ? null : t.id)
                         }
-                        className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-200 text-red-600 hover:bg-red-50 cursor-pointer"
+                        className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
                       >
                         <Trash2 className="h-4 w-4" aria-hidden="true" />
                       </button>
@@ -162,7 +162,7 @@ export function AdminTestsPage() {
                   </div>
 
                   {isConfirming && (
-                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-900">
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/70 p-3 text-xs text-red-900 dark:text-red-200">
                       <span>Delete this test and all its questions?</span>
                       <div className="flex items-center gap-2">
                         <Button

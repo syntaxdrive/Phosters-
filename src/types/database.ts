@@ -1,6 +1,13 @@
 export type UserRole = 'student' | 'admin';
 export type MaterialFileType = 'pdf' | 'image' | 'zip' | 'other';
 export type AnnouncementAudienceType = 'all' | 'exam' | 'exam_subject';
+export type PushNotificationType =
+  | 'lesson'
+  | 'test'
+  | 'broadcast'
+  | 'inactivity_reminder'
+  | 'test_reminder'
+  | 'custom';
 
 export type Profile = {
   id: string;
@@ -179,6 +186,35 @@ export type AnnouncementLink = {
   title: string;
   url: string;
   display_order: number;
+};
+
+export type PushSubscriptionRecord = {
+  id: string;
+  user_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  user_agent: string | null;
+  notify_lessons: boolean;
+  notify_tests: boolean;
+  notify_broadcasts: boolean;
+  notify_reminders: boolean;
+  last_notified_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PushNotificationLog = {
+  id: string;
+  notification_type: PushNotificationType;
+  title: string;
+  body: string;
+  target_url: string;
+  sent_by: string | null;
+  recipients_count: number;
+  delivered_count: number;
+  failed_count: number;
+  created_at: string;
 };
 
 export type Database = {
@@ -526,6 +562,57 @@ export type Database = {
           title?: string;
           url?: string;
           display_order?: number;
+        };
+        Relationships: [];
+      };
+      push_subscriptions: {
+        Row: PushSubscriptionRecord;
+        Insert: {
+          id?: string;
+          user_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          user_agent?: string | null;
+          notify_lessons?: boolean;
+          notify_tests?: boolean;
+          notify_broadcasts?: boolean;
+          notify_reminders?: boolean;
+          last_notified_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          p256dh?: string;
+          auth?: string;
+          user_agent?: string | null;
+          notify_lessons?: boolean;
+          notify_tests?: boolean;
+          notify_broadcasts?: boolean;
+          notify_reminders?: boolean;
+          last_notified_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      push_notification_logs: {
+        Row: PushNotificationLog;
+        Insert: {
+          id?: string;
+          notification_type: PushNotificationType;
+          title: string;
+          body: string;
+          target_url?: string;
+          sent_by?: string | null;
+          recipients_count?: number;
+          delivered_count?: number;
+          failed_count?: number;
+          created_at?: string;
+        };
+        Update: {
+          recipients_count?: number;
+          delivered_count?: number;
+          failed_count?: number;
         };
         Relationships: [];
       };

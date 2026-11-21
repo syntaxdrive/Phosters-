@@ -12,20 +12,24 @@ interface AlertProps {
 
 const toneStyles: Record<AlertTone, { container: string; icon: string }> = {
   info: {
-    container: 'bg-slate-50 border-slate-200 text-slate-800',
-    icon: 'text-slate-600',
+    container:
+      'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200',
+    icon: 'text-slate-600 dark:text-slate-400',
   },
   success: {
-    container: 'bg-phosters-50 border-phosters-200 text-phosters-900',
-    icon: 'text-phosters-600',
+    container:
+      'bg-phosters-50 dark:bg-phosters-900/40 border-phosters-200 dark:border-phosters-800 text-phosters-900 dark:text-phosters-100',
+    icon: 'text-phosters-600 dark:text-phosters-400',
   },
   error: {
-    container: 'bg-red-50 border-red-200 text-red-900',
-    icon: 'text-red-600',
+    container:
+      'bg-red-50 dark:bg-red-950/50 border-red-200 dark:border-red-900/70 text-red-900 dark:text-red-200',
+    icon: 'text-red-600 dark:text-red-400',
   },
   warning: {
-    container: 'bg-amber-50 border-amber-200 text-amber-950',
-    icon: 'text-amber-700',
+    container:
+      'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-900/70 text-amber-950 dark:text-amber-200',
+    icon: 'text-amber-700 dark:text-amber-400',
   },
 };
 

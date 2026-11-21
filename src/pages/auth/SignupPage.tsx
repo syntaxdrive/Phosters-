@@ -106,17 +106,29 @@ export function SignupPage() {
     <div className="max-w-md mx-auto py-4 sm:py-8">
       <Card padding="lg">
         <div className="space-y-1.5">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             Create your Phosters account
           </h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             Register once to access JAMB UTME and UI Post-UTME study tools.
           </p>
         </div>
 
         {formError && (
           <Alert tone="error" className="mt-5">
-            {formError}
+            <span>{formError}</span>
+            {formError.toLowerCase().includes('already exists') && (
+              <>
+                {' '}
+                <Link
+                  to="/forgot-password"
+                  state={{ email }}
+                  className="font-semibold underline hover:text-red-950 dark:hover:text-red-100"
+                >
+                  Forgot your password?
+                </Link>
+              </>
+            )}
           </Alert>
         )}
 
@@ -203,15 +215,26 @@ export function SignupPage() {
           </Button>
         </form>
 
-        <p className="mt-6 pt-5 border-t border-slate-100 text-center text-sm text-slate-600">
-          Already have an account?{' '}
-          <Link
-            to="/login"
-            className="font-semibold text-phosters-700 hover:text-phosters-800 hover:underline"
-          >
-            Sign in
-          </Link>
-        </p>
+        <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-center space-y-2 text-sm text-slate-600 dark:text-slate-400">
+          <p>
+            Already have an account?{' '}
+            <Link
+              to="/login"
+              className="font-semibold text-phosters-700 dark:text-phosters-400 hover:text-phosters-800 dark:hover:text-phosters-300 hover:underline"
+            >
+              Sign in
+            </Link>
+          </p>
+          <p>
+            <Link
+              to="/forgot-password"
+              state={{ email }}
+              className="font-medium text-phosters-700 dark:text-phosters-400 hover:text-phosters-800 dark:hover:text-phosters-300 hover:underline"
+            >
+              Forgot your password?
+            </Link>
+          </p>
+        </div>
       </Card>
     </div>
   );

@@ -12,9 +12,9 @@ export function LoadingState({ message = 'Loading...' }: { message?: string }) {
     >
       <div
         aria-hidden="true"
-        className="h-7 w-7 rounded-full border-2 border-phosters-600 border-t-transparent animate-spin"
+        className="h-7 w-7 rounded-full border-2 border-phosters-600 dark:border-phosters-400 border-t-transparent animate-spin"
       />
-      <p className="mt-3 text-sm font-medium text-slate-600">{message}</p>
+      <p className="mt-3 text-sm font-medium text-slate-600 dark:text-slate-400">{message}</p>
     </div>
   );
 }
@@ -35,11 +35,11 @@ export function ErrorState({
   return (
     <Card className="max-w-lg mx-auto text-center">
       <div className="flex flex-col items-center">
-        <div className="h-11 w-11 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
+        <div className="h-11 w-11 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/70 flex items-center justify-center text-red-600 dark:text-red-400">
           <AlertCircle className="h-5 w-5" aria-hidden="true" />
         </div>
-        <h2 className="mt-4 text-base font-semibold text-slate-900">{title}</h2>
-        <p className="mt-1.5 text-sm text-slate-600 leading-relaxed">{message}</p>
+        <h2 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+        <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{message}</p>
         {onRetry && (
           <div className="mt-5">
             <Button variant="secondary" onClick={onRetry}>
@@ -63,11 +63,11 @@ export function EmptyState({ title, description, action }: EmptyStateProps) {
   return (
     <Card className="text-center">
       <div className="flex flex-col items-center py-4">
-        <div className="h-11 w-11 rounded-xl bg-phosters-50 border border-phosters-200 flex items-center justify-center text-phosters-600">
+        <div className="h-11 w-11 rounded-xl bg-phosters-50 dark:bg-phosters-900/50 border border-phosters-200 dark:border-phosters-800 flex items-center justify-center text-phosters-600 dark:text-phosters-400">
           <BookOpen className="h-5 w-5" aria-hidden="true" />
         </div>
-        <h2 className="mt-4 text-base font-semibold text-slate-900">{title}</h2>
-        <p className="mt-1.5 max-w-md text-sm text-slate-600 leading-relaxed">{description}</p>
+        <h2 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+        <p className="mt-1.5 max-w-md text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{description}</p>
         {action && <div className="mt-5">{action}</div>}
       </div>
     </Card>

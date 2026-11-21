@@ -51,7 +51,7 @@ export function TestResultDetailPage() {
       <div className="flex items-center justify-between gap-3">
         <Link
           to="/app/results"
-          className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 hover:text-slate-900"
+          className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           <span>All Results</span>
@@ -59,7 +59,7 @@ export function TestResultDetailPage() {
 
         <Link
           to={`/app/tests/${attempt.test_id}`}
-          className="inline-flex items-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
+          className="inline-flex items-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
         >
           <RotateCcw className="h-4 w-4" aria-hidden="true" />
           <span>Retake Test</span>
@@ -68,28 +68,28 @@ export function TestResultDetailPage() {
 
       <Card padding="lg" className="space-y-5">
         <div className="space-y-1">
-          <p className="text-xs font-medium text-slate-500">Submitted {submittedLabel}</p>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Submitted {submittedLabel}</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             {attempt.test_title}
           </h1>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
-          <div className="p-3.5 rounded-xl bg-phosters-50 border border-phosters-200">
-            <p className="text-xs font-medium text-phosters-800">Percentage</p>
-            <p className="mt-1 text-2xl font-bold text-phosters-900 tabular-nums">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div className="p-3.5 rounded-xl bg-phosters-50 dark:bg-phosters-900/40 border border-phosters-200 dark:border-phosters-800">
+            <p className="text-xs font-medium text-phosters-800 dark:text-phosters-300">Percentage</p>
+            <p className="mt-1 text-2xl font-bold text-phosters-900 dark:text-phosters-100 tabular-nums">
               {Math.round(Number(attempt.percentage))}%
             </p>
           </div>
-          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-            <p className="text-xs font-medium text-slate-600">Score</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+            <p className="text-xs font-medium text-slate-600 dark:text-slate-400">Score</p>
+            <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100 tabular-nums">
               {attempt.score} / {attempt.total_points}
             </p>
           </div>
-          <div className="col-span-2 sm:col-span-1 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-            <p className="text-xs font-medium text-slate-600">Correct answers</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">
+          <div className="col-span-2 sm:col-span-1 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+            <p className="text-xs font-medium text-slate-600 dark:text-slate-400">Correct answers</p>
+            <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100 tabular-nums">
               {attempt.correct_count} / {attempt.total_questions}
             </p>
           </div>
@@ -99,7 +99,7 @@ export function TestResultDetailPage() {
           <div>
             <Link
               to={`/app/lessons/${attempt.lesson_id}`}
-              className="text-sm font-semibold text-phosters-700 hover:underline"
+              className="text-sm font-semibold text-phosters-700 dark:text-phosters-400 hover:underline"
             >
               Return to lesson
             </Link>
@@ -113,20 +113,20 @@ export function TestResultDetailPage() {
         </Alert>
       ) : (
         <section aria-labelledby="review-heading" className="space-y-4">
-          <h2 id="review-heading" className="text-lg font-bold text-slate-900">
+          <h2 id="review-heading" className="text-lg font-bold text-slate-900 dark:text-slate-100">
             Answer review
           </h2>
 
           {review_items.map((item, idx) => (
             <Card key={item.question_id} padding="lg" className="space-y-4">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-xs font-semibold text-slate-500 tabular-nums">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums">
                   Question {idx + 1} · {item.points_awarded} / {item.points} marks
                 </span>
                 <span
                   className={[
                     'inline-flex items-center gap-1.5 text-xs font-semibold',
-                    item.is_correct ? 'text-phosters-700' : 'text-red-600',
+                    item.is_correct ? 'text-phosters-700 dark:text-phosters-400' : 'text-red-600 dark:text-red-400',
                   ].join(' ')}
                 >
                   {item.is_correct ? (
@@ -143,7 +143,7 @@ export function TestResultDetailPage() {
                 </span>
               </div>
 
-              <p className="text-base font-semibold text-slate-900 whitespace-pre-line">
+              <p className="text-base font-semibold text-slate-900 dark:text-slate-100 whitespace-pre-line">
                 {item.question_text}
               </p>
 
@@ -152,13 +152,16 @@ export function TestResultDetailPage() {
                   const isSelected = opt.id === item.selected_option_id;
                   const isCorrectOpt = opt.id === item.correct_option_id || opt.is_correct;
 
-                  let styleClass = 'border-slate-200 bg-white text-slate-700';
+                  let styleClass =
+                    'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 text-slate-700 dark:text-slate-300';
                   let marker = '';
                   if (isCorrectOpt) {
-                    styleClass = 'border-phosters-600 bg-phosters-50 text-slate-900';
+                    styleClass =
+                      'border-phosters-600 dark:border-phosters-500 bg-phosters-50 dark:bg-phosters-900/40 text-slate-900 dark:text-slate-100';
                     marker = isSelected ? 'Your choice · Correct' : 'Correct answer';
                   } else if (isSelected) {
-                    styleClass = 'border-red-300 bg-red-50 text-red-900';
+                    styleClass =
+                      'border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/50 text-red-900 dark:text-red-200';
                     marker = 'Your choice';
                   }
 
@@ -182,8 +185,8 @@ export function TestResultDetailPage() {
               </div>
 
               {item.explanation && (
-                <div className="rounded-lg bg-slate-50 border border-slate-200 p-3.5 text-sm text-slate-700">
-                  <span className="font-semibold text-slate-900">Explanation: </span>
+                <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3.5 text-sm text-slate-700 dark:text-slate-300">
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">Explanation: </span>
                   <span>{item.explanation}</span>
                 </div>
               )}

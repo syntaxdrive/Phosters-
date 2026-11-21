@@ -42,11 +42,11 @@ export function LandingPage() {
       {!isConfigured && (
         <Alert tone="warning" title="Supabase setup required">
           Authentication is paused until{' '}
-          <code className="font-mono text-xs bg-amber-100 px-1 py-0.5 rounded">VITE_SUPABASE_URL</code>{' '}
+          <code className="font-mono text-xs bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded">VITE_SUPABASE_URL</code>{' '}
           and{' '}
-          <code className="font-mono text-xs bg-amber-100 px-1 py-0.5 rounded">VITE_SUPABASE_ANON_KEY</code>{' '}
+          <code className="font-mono text-xs bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded">VITE_SUPABASE_ANON_KEY</code>{' '}
           are configured.{' '}
-          <Link to="/setup" className="font-semibold underline hover:text-amber-900">
+          <Link to="/setup" className="font-semibold underline hover:text-amber-900 dark:hover:text-amber-100">
             View setup instructions
           </Link>
         </Alert>
@@ -54,13 +54,13 @@ export function LandingPage() {
 
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
         <div className="lg:col-span-7 flex flex-col justify-center space-y-5">
-          <p className="text-sm font-medium text-phosters-700">
+          <p className="text-sm font-medium text-phosters-700 dark:text-phosters-400">
             Phosters Tutorial Centre · JAMB UTME &amp; UI Post-UTME
           </p>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-slate-900 leading-tight">
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-slate-900 dark:text-slate-50 leading-tight">
             Structured exam preparation built for mobile study
           </h1>
-          <p className="text-base sm:text-lg text-slate-600 max-w-2xl leading-relaxed">
+          <p className="text-base sm:text-lg text-slate-600 dark:text-slate-300 max-w-2xl leading-relaxed">
             Study your exact JAMB UTME and University of Ibadan Post-UTME subject combinations with organised video lessons, downloadable notes, and practice tests.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 pt-1">
@@ -74,7 +74,7 @@ export function LandingPage() {
                 </Link>
                 <Link
                   to="/login"
-                  className="inline-flex items-center justify-center min-h-[48px] px-6 py-3 rounded-lg border border-slate-200 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition-colors whitespace-nowrap"
+                  className="inline-flex items-center justify-center min-h-[48px] px-6 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-base font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
                 >
                   Sign In
                 </Link>
@@ -91,27 +91,27 @@ export function LandingPage() {
         </div>
 
         <div className="lg:col-span-5 flex">
-          <Card padding="lg" className="w-full flex flex-col justify-between bg-white">
+          <Card padding="lg" className="w-full flex flex-col justify-between">
             <div className="space-y-4">
-              <div className="h-10 w-10 rounded-lg bg-phosters-50 border border-phosters-200 flex items-center justify-center text-phosters-700">
+              <div className="h-10 w-10 rounded-lg bg-phosters-50 dark:bg-phosters-900/50 border border-phosters-200 dark:border-phosters-800 flex items-center justify-center text-phosters-700 dark:text-phosters-400">
                 <BookOpen className="h-5 w-5" aria-hidden="true" />
               </div>
-              <h2 className="text-lg font-bold text-slate-900">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
                 Two examinations, separate subject plans
               </h2>
-              <p className="text-sm text-slate-600 leading-relaxed">
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                 Prepare for JAMB UTME, UI Post-UTME, or both. Your subject choices for each examination are stored independently so you always see the right lessons.
               </p>
             </div>
 
-            <div className="mt-6 pt-5 border-t border-slate-100 space-y-2.5 text-sm">
+            <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 space-y-2.5 text-sm">
               <div className="flex items-center justify-between py-1">
-                <span className="font-medium text-slate-900">JAMB UTME</span>
-                <span className="text-slate-500">English + 3 selected subjects</span>
+                <span className="font-medium text-slate-900 dark:text-slate-100">JAMB UTME</span>
+                <span className="text-slate-500 dark:text-slate-400">English + 3 selected subjects</span>
               </div>
               <div className="flex items-center justify-between py-1">
-                <span className="font-medium text-slate-900">UI Post-UTME</span>
-                <span className="text-slate-500">Course-specific combination</span>
+                <span className="font-medium text-slate-900 dark:text-slate-100">UI Post-UTME</span>
+                <span className="text-slate-500 dark:text-slate-400">Course-specific combination</span>
               </div>
             </div>
           </Card>
@@ -119,7 +119,7 @@ export function LandingPage() {
       </section>
 
       <section aria-labelledby="pillars-heading" className="space-y-4">
-        <h2 id="pillars-heading" className="text-lg font-bold text-slate-900">
+        <h2 id="pillars-heading" className="text-lg font-bold text-slate-900 dark:text-slate-100">
           What is inside Phosters
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
@@ -127,13 +127,13 @@ export function LandingPage() {
             const Icon = pillar.icon;
             return (
               <Card key={pillar.title} padding="md">
-                <div className="h-9 w-9 rounded-lg bg-phosters-50 border border-phosters-200 flex items-center justify-center text-phosters-700">
+                <div className="h-9 w-9 rounded-lg bg-phosters-50 dark:bg-phosters-900/50 border border-phosters-200 dark:border-phosters-800 flex items-center justify-center text-phosters-700 dark:text-phosters-400">
                   <Icon className="h-4 w-4" aria-hidden="true" />
                 </div>
-                <h3 className="mt-4 text-base font-semibold text-slate-900">
+                <h3 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">
                   {pillar.title}
                 </h3>
-                <p className="mt-1.5 text-sm text-slate-600 leading-relaxed">
+                <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                   {pillar.description}
                 </p>
               </Card>

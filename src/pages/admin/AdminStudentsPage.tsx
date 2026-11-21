@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  BellRing,
   ChevronDown,
   ChevronUp,
   Copy,
@@ -9,6 +10,10 @@ import {
   Search,
 } from 'lucide-react';
 import { fetchAdminStudentStatistics } from '../../services/adminStatsService';
+import {
+  triggerInactivityReminders,
+  triggerPushNotification,
+} from '../../services/pushService';
 import type {
   AdminStudentStatisticsPayload,
   AdminStudentUsageRow,
@@ -30,10 +35,10 @@ const statusLabels: Record<StudentEngagementStatus, string> = {
 };
 
 const statusTextClasses: Record<StudentEngagementStatus, string> = {
-  not_enrolled: 'text-slate-600',
-  not_started: 'text-amber-700',
-  in_progress: 'text-phosters-700',
-  completed: 'text-phosters-800',
+  not_enrolled: 'text-slate-600 dark:text-slate-400',
+  not_started: 'text-amber-700 dark:text-amber-400',
+  in_progress: 'text-phosters-700 dark:text-phosters-400',
+  completed: 'text-phosters-800 dark:text-phosters-300',
 };
 
 function formatShortDate(iso: string | null): string {
@@ -97,8 +102,15 @@ export function AdminStudentsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
   const [showComposer, setShowComposer] = useState(false);
+  const [showPushComposer, setShowPushComposer] = useState(false);
   const [emailSubject, setEmailSubject] = useState(getDefaultEmailDraft('all').subject);
   const [emailBody, setEmailBody] = useState(getDefaultEmailDraft('all').body);
+  const [pushTitle, setPushTitle] = useState('Continue your Phosters study streak');
+  const [pushBody, setPushBody] = useState(
+    'Open Phosters today to complete your next lesson and try a practice test.'
+  );
+  const [pushTargetUrl, setPushTargetUrl] = useState('/app');
+  const [sendingPush, setSendingPush] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'success' | 'info' | 'error'; message: string } | null>(null);
 
   const loadStats = useCallback(async () => {
@@ -125,6 +137,20 @@ export function AdminStudentsPage() {
     const draft = getDefaultEmailDraft(next);
     setEmailSubject(draft.subject);
     setEmailBody(draft.body);
+    setPushTitle(draft.subject);
+    if (next === 'not_enrolled') {
+      setPushBody('Choose your JAMB UTME or UI Post-UTME subjects on Phosters to unlock your lessons.');
+      setPushTargetUrl('/app/setup-exams');
+    } else if (next === 'not_started') {
+      setPushBody('Your lessons and practice tests are waiting. Start your first Phosters lesson today.');
+      setPushTargetUrl('/app/subjects');
+    } else if (next === 'inactive_7d') {
+      setPushBody('It has been a few days since your last session. Resume your lessons and try a practice test.');
+      setPushTargetUrl('/app');
+    } else {
+      setPushBody('Open Phosters today to watch your next lesson and try a practice test.');
+      setPushTargetUrl('/app');
+    }
   }
 
   const filteredStudents = useMemo(() => {
@@ -323,6 +349,59 @@ export function AdminStudentsPage() {
     });
   }
 
+  async function handleSendCustomPush() {
+    setNotice(null);
+    const targetIds = targetStudentsForOutreach.map((s) => s.studentId);
+    if (targetIds.length === 0) {
+      setNotice({ tone: 'info', message: 'No matching students selected.' });
+      return;
+    }
+
+    setSendingPush(true);
+    const res = await triggerPushNotification({
+      type: 'custom',
+      title: pushTitle,
+      body: pushBody,
+      targetUrl: pushTargetUrl,
+      studentIds: targetIds,
+      preferenceCategory: 'reminders',
+    });
+    setSendingPush(false);
+
+    if (res.error) {
+      setNotice({ tone: 'error', message: res.error });
+      return;
+    }
+    if (res.result) {
+      setNotice({ tone: 'success', message: res.result.message });
+    }
+  }
+
+  async function handleRunSmartStudyReminders() {
+    setNotice(null);
+    const targetIds = targetStudentsForOutreach.map((s) => s.studentId);
+    if (targetIds.length === 0) {
+      setNotice({ tone: 'info', message: 'No matching students selected.' });
+      return;
+    }
+
+    setSendingPush(true);
+    const res = await triggerInactivityReminders({
+      studentIds: targetIds,
+      inactiveDays: statusFilter === 'inactive_7d' ? 7 : 3,
+      force: true,
+    });
+    setSendingPush(false);
+
+    if (res.error) {
+      setNotice({ tone: 'error', message: res.error });
+      return;
+    }
+    if (res.result) {
+      setNotice({ tone: 'success', message: res.result.message });
+    }
+  }
+
   if (loading) return <LoadingState message="Loading student enrollment and usage statistics..." />;
   if (error || !stats) {
     return (
@@ -342,10 +421,10 @@ export function AdminStudentsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             Student Usage &amp; Progress
           </h1>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
             Track enrolled students across courses, spot inactive or not-started learners, and follow up by email.
           </p>
         </div>
@@ -365,7 +444,7 @@ export function AdminStudentsPage() {
       {!stats.contactsAvailable && (
         <Alert tone="info" title="Unlock student email addresses & sign-in activity">
           Run{' '}
-          <code className="font-mono text-xs bg-white/80 px-1.5 py-0.5 rounded border border-slate-200">
+          <code className="font-mono text-xs bg-white/80 dark:bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
             supabase/migrations/004_admin_student_statistics.sql
           </code>{' '}
           in your Supabase SQL Editor to display student email addresses and last sign-in timestamps for follow-up emails.
@@ -393,12 +472,12 @@ export function AdminStudentsPage() {
               className={[
                 'text-left rounded-xl border p-4 transition-colors cursor-pointer',
                 isActive
-                  ? 'bg-phosters-50 border-phosters-600'
-                  : 'bg-white border-slate-200 hover:border-phosters-600',
+                  ? 'bg-phosters-50 dark:bg-phosters-950/40 border-phosters-600 dark:border-phosters-500'
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-phosters-600 dark:hover:border-phosters-500',
               ].join(' ')}
             >
-              <p className="text-xs font-medium text-slate-600">{item.label}</p>
-              <p className="mt-1.5 text-2xl font-bold text-slate-900 tabular-nums">
+              <p className="text-xs font-medium text-slate-600 dark:text-slate-400">{item.label}</p>
+              <p className="mt-1.5 text-2xl font-bold text-slate-900 dark:text-slate-100 tabular-nums">
                 {item.value}
               </p>
             </button>
@@ -409,14 +488,14 @@ export function AdminStudentsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Card padding="md" className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-medium text-slate-500">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
               Average lesson completion (enrolled students)
             </p>
-            <p className="mt-1 text-xl font-bold text-slate-900 tabular-nums">
+            <p className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-100 tabular-nums">
               {summary.averageCompletionPct}%
             </p>
           </div>
-          <div className="w-28 h-2 rounded-full bg-slate-100 overflow-hidden">
+          <div className="w-28 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
             <div
               className="h-full bg-phosters-600"
               style={{ width: `${summary.averageCompletionPct}%` }}
@@ -426,17 +505,17 @@ export function AdminStudentsPage() {
 
         <Card padding="md" className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-medium text-slate-500">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
               Practice tests submitted across platform
             </p>
-            <p className="mt-1 text-xl font-bold text-slate-900 tabular-nums">
+            <p className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-100 tabular-nums">
               {summary.totalTestAttempts}{' '}
               {summary.totalTestAttempts === 1 ? 'attempt' : 'attempts'}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-slate-500">Average score</p>
-            <p className="text-base font-bold text-phosters-700 tabular-nums">
+            <p className="text-xs text-slate-500 dark:text-slate-400">Average score</p>
+            <p className="text-base font-bold text-phosters-700 dark:text-phosters-400 tabular-nums">
               {summary.averageTestPct !== null ? `${summary.averageTestPct}%` : '—'}
             </p>
           </div>
@@ -447,10 +526,10 @@ export function AdminStudentsPage() {
       <section aria-labelledby="course-stats-heading" className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 id="course-stats-heading" className="text-base font-bold text-slate-900">
+            <h2 id="course-stats-heading" className="text-base font-bold text-slate-900 dark:text-slate-100">
               Enrollment &amp; progress by course
             </h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Select any examination and subject row to filter the student list below.
             </p>
           </div>
@@ -462,7 +541,7 @@ export function AdminStudentsPage() {
                 setSubjectFilter('all');
                 setSelectedIds(new Set());
               }}
-              className="text-xs font-semibold text-phosters-700 hover:underline cursor-pointer"
+              className="text-xs font-semibold text-phosters-700 dark:text-phosters-400 hover:underline cursor-pointer"
             >
               Clear course filter
             </button>
@@ -471,7 +550,7 @@ export function AdminStudentsPage() {
 
         {courseStats.length === 0 ? (
           <Card padding="md">
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               No students have enrolled in subjects or published lessons yet.
             </p>
           </Card>
@@ -479,7 +558,7 @@ export function AdminStudentsPage() {
           <Card padding="none" className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[680px]">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
+                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 text-xs font-semibold text-slate-600 dark:text-slate-300">
                   <th className="px-4 py-3">Course (Exam · Subject)</th>
                   <th className="px-4 py-3 text-right">Enrolled</th>
                   <th className="px-4 py-3 text-right">Published Lessons</th>
@@ -490,7 +569,7 @@ export function AdminStudentsPage() {
                   <th className="px-4 py-3 text-right">Test Avg</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-sm">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
                 {courseStats.map((course) => {
                   const isSelected =
                     examFilter === course.examId && subjectFilter === course.subjectId;
@@ -509,31 +588,33 @@ export function AdminStudentsPage() {
                       }}
                       className={[
                         'cursor-pointer transition-colors',
-                        isSelected ? 'bg-phosters-50' : 'hover:bg-slate-50',
+                        isSelected
+                          ? 'bg-phosters-50 dark:bg-phosters-950/40'
+                          : 'hover:bg-slate-50 dark:hover:bg-slate-800/60',
                       ].join(' ')}
                     >
-                      <td className="px-4 py-3 font-medium text-slate-900">
+                      <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
                         {course.examName} · {course.subjectName}
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold tabular-nums text-slate-900">
+                      <td className="px-4 py-3 text-right font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                         {course.enrolledStudentsCount}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                      <td className="px-4 py-3 text-right tabular-nums text-slate-600 dark:text-slate-300">
                         {course.publishedLessonsCount}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-amber-700">
+                      <td className="px-4 py-3 text-right tabular-nums text-amber-700 dark:text-amber-400">
                         {course.notStartedCount}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-phosters-700">
+                      <td className="px-4 py-3 text-right tabular-nums text-phosters-700 dark:text-phosters-400">
                         {course.inProgressCount}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-phosters-800">
+                      <td className="px-4 py-3 text-right tabular-nums text-phosters-800 dark:text-phosters-300">
                         {course.completedCount}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums font-medium text-slate-900">
+                      <td className="px-4 py-3 text-right tabular-nums font-medium text-slate-900 dark:text-slate-100">
                         {course.averageCompletionPct}%
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                      <td className="px-4 py-3 text-right tabular-nums text-slate-600 dark:text-slate-300">
                         {course.averageTestPct !== null
                           ? `${course.averageTestPct}% (${course.testAttemptsCount})`
                           : '—'}
@@ -550,7 +631,7 @@ export function AdminStudentsPage() {
       {/* Filters & Email Follow-up Actions */}
       <section aria-labelledby="students-directory-heading" className="space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <h2 id="students-directory-heading" className="text-base font-bold text-slate-900">
+          <h2 id="students-directory-heading" className="text-base font-bold text-slate-900 dark:text-slate-100">
             Students ({filteredStudents.length})
           </h2>
 
@@ -564,7 +645,21 @@ export function AdminStudentsPage() {
 
             <Button
               variant="secondary"
-              onClick={() => setShowComposer((prev) => !prev)}
+              onClick={() => {
+                setShowPushComposer((prev) => !prev);
+                setShowComposer(false);
+              }}
+            >
+              <BellRing className="h-4 w-4" aria-hidden="true" />
+              <span>{showPushComposer ? 'Hide Push Nudge' : 'Push Nudge'}</span>
+            </Button>
+
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowComposer((prev) => !prev);
+                setShowPushComposer(false);
+              }}
             >
               <Mail className="h-4 w-4" aria-hidden="true" />
               <span>{showComposer ? 'Hide Email Draft' : 'Email Follow-up'}</span>
@@ -579,15 +674,88 @@ export function AdminStudentsPage() {
 
         {notice && <Alert tone={notice.tone}>{notice.message}</Alert>}
 
+        {showPushComposer && (
+          <Card padding="lg" className="space-y-4 border-phosters-200 dark:border-phosters-800 bg-phosters-50/30 dark:bg-phosters-950/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Send phone push notification ({targetStudentsForOutreach.length}{' '}
+                  {targetStudentsForOutreach.length === 1 ? 'student' : 'students'} targeted)
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  Sends native notifications to targeted students who enabled alerts on their phones — even when the app is closed.
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                loading={sendingPush}
+                onClick={() => void handleRunSmartStudyReminders()}
+              >
+                <BellRing className="h-4 w-4" aria-hidden="true" />
+                <span>Smart Test &amp; Study Nudge</span>
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  Notification headline
+                </label>
+                <input
+                  type="text"
+                  value={pushTitle}
+                  onChange={(e) => setPushTitle(e.target.value)}
+                  className="w-full min-h-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  Open page when tapped
+                </label>
+                <select
+                  value={pushTargetUrl}
+                  onChange={(e) => setPushTargetUrl(e.target.value)}
+                  className="w-full min-h-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
+                >
+                  <option value="/app">Student Home Dashboard (/app)</option>
+                  <option value="/app/subjects">My Subjects &amp; Tests (/app/subjects)</option>
+                  <option value="/app/setup-exams">Exam &amp; Subject Setup (/app/setup-exams)</option>
+                  <option value="/app/results">Test Results (/app/results)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
+                Notification message
+              </label>
+              <textarea
+                rows={2}
+                value={pushBody}
+                onChange={(e) => setPushBody(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button loading={sendingPush} onClick={() => void handleSendCustomPush()}>
+                <BellRing className="h-4 w-4" aria-hidden="true" />
+                <span>Send Custom Push Notification</span>
+              </Button>
+            </div>
+          </Card>
+        )}
+
         {showComposer && (
-          <Card padding="lg" className="space-y-4 border-phosters-200 bg-phosters-50/30">
+          <Card padding="lg" className="space-y-4 border-phosters-200 dark:border-phosters-800 bg-phosters-50/30 dark:bg-phosters-950/20">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
                   Follow-up email template ({targetEmails.length}{' '}
                   {targetEmails.length === 1 ? 'recipient' : 'recipients'} in BCC)
                 </h3>
-                <p className="text-xs text-slate-600">
+                <p className="text-xs text-slate-600 dark:text-slate-300">
                   Customize the message below, then open in your email app or copy addresses into BCC.
                 </p>
               </div>
@@ -595,26 +763,26 @@ export function AdminStudentsPage() {
 
             <div className="space-y-3">
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-slate-800">
+                <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
                   Email subject
                 </label>
                 <input
                   type="text"
                   value={emailSubject}
                   onChange={(e) => setEmailSubject(e.target.value)}
-                  className="w-full min-h-[42px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+                  className="w-full min-h-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-slate-800">
+                <label className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
                   Message body
                 </label>
                 <textarea
                   rows={4}
                   value={emailBody}
                   onChange={(e) => setEmailBody(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
                 />
               </div>
             </div>
@@ -629,7 +797,7 @@ export function AdminStudentsPage() {
                   <span>Open Email App ({targetEmails.length} BCC)</span>
                 </a>
               ) : (
-                <p className="text-xs text-amber-800">
+                <p className="text-xs text-amber-800 dark:text-amber-300">
                   {targetEmails.length === 0
                     ? 'No student email addresses in the current selection.'
                     : 'Too many recipients for a single mailto link. Use "Copy Emails" and paste into BCC in Gmail or Outlook.'}
@@ -648,7 +816,7 @@ export function AdminStudentsPage() {
         <Card padding="sm" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="relative">
             <Search
-              className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+              className="h-4 w-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
               aria-hidden="true"
             />
             <input
@@ -657,7 +825,7 @@ export function AdminStudentsPage() {
               placeholder="Search name, email, course..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full min-h-[44px] rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900"
+              className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-9 pr-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
             />
           </div>
 
@@ -665,7 +833,7 @@ export function AdminStudentsPage() {
             aria-label="Filter by engagement status"
             value={statusFilter}
             onChange={(e) => handleStatusFilterChange(e.target.value as StatusFilter)}
-            className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+            className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
           >
             <option value="all">All engagement statuses</option>
             <option value="not_enrolled">Not enrolled yet</option>
@@ -682,7 +850,7 @@ export function AdminStudentsPage() {
               setExamFilter(e.target.value);
               setSelectedIds(new Set());
             }}
-            className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+            className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
           >
             <option value="all">All examinations</option>
             {stats.exams.map((ex) => (
@@ -699,7 +867,7 @@ export function AdminStudentsPage() {
               setSubjectFilter(e.target.value);
               setSelectedIds(new Set());
             }}
-            className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+            className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
           >
             <option value="all">All subjects</option>
             {stats.subjects.map((sub) => (
@@ -717,13 +885,13 @@ export function AdminStudentsPage() {
           />
         ) : (
           <Card padding="none" className="overflow-hidden">
-            <div className="px-4 sm:px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
-              <label className="inline-flex items-center gap-2.5 text-xs font-semibold text-slate-700 cursor-pointer min-h-[36px]">
+            <div className="px-4 sm:px-5 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between gap-3">
+              <label className="inline-flex items-center gap-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer min-h-[36px]">
                 <input
                   type="checkbox"
                   checked={allFilteredSelected}
                   onChange={toggleSelectAllFiltered}
-                  className="h-4 w-4 rounded border-slate-300 text-phosters-600 focus:ring-phosters-600"
+                  className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600"
                 />
                 <span>
                   {selectedIds.size > 0
@@ -736,14 +904,14 @@ export function AdminStudentsPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedIds(new Set())}
-                  className="text-xs font-semibold text-phosters-700 hover:underline cursor-pointer"
+                  className="text-xs font-semibold text-phosters-700 dark:text-phosters-400 hover:underline cursor-pointer"
                 >
                   Clear selection
                 </button>
               )}
             </div>
 
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {filteredStudents.map((stu: AdminStudentUsageRow) => {
                 const isExpanded = expandedStudentId === stu.studentId;
                 const isChecked = selectedIds.has(stu.studentId);
@@ -757,15 +925,15 @@ export function AdminStudentsPage() {
                           aria-label={`Select ${stu.fullName}`}
                           checked={isChecked}
                           onChange={() => toggleStudentSelection(stu.studentId)}
-                          className="mt-1 h-4 w-4 rounded border-slate-300 text-phosters-600 focus:ring-phosters-600 shrink-0 cursor-pointer"
+                          className="mt-1 h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600 shrink-0 cursor-pointer"
                         />
 
                         <div className="min-w-0 space-y-1">
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                            <p className="text-sm sm:text-base font-semibold text-slate-900">
+                            <p className="text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100">
                               {stu.fullName}
                             </p>
-                            <span aria-hidden="true" className="text-slate-300">
+                            <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">
                               ·
                             </span>
                             <span
@@ -775,7 +943,7 @@ export function AdminStudentsPage() {
                             </span>
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
                             <span>{stu.email || 'Email unavailable'}</span>
                             {stu.phone && (
                               <>
@@ -795,7 +963,7 @@ export function AdminStudentsPage() {
                           </div>
 
                           {stu.enrollments.length > 0 && (
-                            <p className="text-xs text-slate-600">
+                            <p className="text-xs text-slate-600 dark:text-slate-300">
                               {stu.enrollments
                                 .map((e) => `${e.examName} (${e.subjectNames.join(', ')})`)
                                 .join(' · ')}
@@ -807,14 +975,14 @@ export function AdminStudentsPage() {
                       <div className="flex flex-wrap items-center justify-between lg:justify-end gap-4 pl-7 lg:pl-0 shrink-0">
                         <div className="min-w-[140px]">
                           <div className="flex items-center justify-between gap-2 text-xs">
-                            <span className="text-slate-600 tabular-nums">
+                            <span className="text-slate-600 dark:text-slate-300 tabular-nums">
                               {stu.completedLessonsCount}/{stu.availableLessonsCount} lessons
                             </span>
-                            <span className="font-semibold text-slate-900 tabular-nums">
+                            <span className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
                               {stu.completionPct}%
                             </span>
                           </div>
-                          <div className="mt-1 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                          <div className="mt-1 h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
                             <div
                               className="h-full bg-phosters-600"
                               style={{ width: `${stu.completionPct}%` }}
@@ -823,11 +991,11 @@ export function AdminStudentsPage() {
                         </div>
 
                         <div className="text-xs text-right tabular-nums min-w-[78px]">
-                          <p className="text-slate-500">
+                          <p className="text-slate-500 dark:text-slate-400">
                             {stu.testAttemptsCount}{' '}
                             {stu.testAttemptsCount === 1 ? 'test' : 'tests'}
                           </p>
-                          <p className="font-semibold text-slate-900">
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">
                             {stu.averageTestPct !== null ? `${stu.averageTestPct}% avg` : '—'}
                           </p>
                         </div>
@@ -837,7 +1005,7 @@ export function AdminStudentsPage() {
                           onClick={() =>
                             setExpandedStudentId(isExpanded ? null : stu.studentId)
                           }
-                          className="inline-flex items-center gap-1 min-h-[40px] px-3 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                          className="inline-flex items-center gap-1 min-h-[40px] px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                         >
                           <span>Details</span>
                           {isExpanded ? (
@@ -850,9 +1018,9 @@ export function AdminStudentsPage() {
                     </div>
 
                     {isExpanded && (
-                      <div className="ml-7 rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                      <div className="ml-7 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-4 space-y-3">
                         {stu.enrollments.length === 0 ? (
-                          <p className="text-xs text-slate-600">
+                          <p className="text-xs text-slate-600 dark:text-slate-300">
                             This student has registered an account but has not completed exam &amp; subject setup yet.
                           </p>
                         ) : (
@@ -861,17 +1029,17 @@ export function AdminStudentsPage() {
                               {stu.enrollments.map((enr) => (
                                 <div
                                   key={enr.examId}
-                                  className="rounded-lg bg-white border border-slate-200 p-3 space-y-1"
+                                  className="rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 space-y-1"
                                 >
-                                  <p className="font-bold text-slate-900">{enr.examName}</p>
+                                  <p className="font-bold text-slate-900 dark:text-slate-100">{enr.examName}</p>
                                   {(enr.intendedCourse || enr.institution) && (
-                                    <p className="text-slate-600">
+                                    <p className="text-slate-600 dark:text-slate-300">
                                       {[enr.intendedCourse, enr.institution]
                                         .filter(Boolean)
                                         .join(' · ')}
                                     </p>
                                   )}
-                                  <p className="text-slate-500">
+                                  <p className="text-slate-500 dark:text-slate-400">
                                     Subjects: {enr.subjectNames.join(', ')}
                                   </p>
                                 </div>
@@ -879,24 +1047,24 @@ export function AdminStudentsPage() {
                             </div>
 
                             <div className="space-y-2">
-                              <p className="text-xs font-bold text-slate-800">
+                              <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
                                 Progress by subject
                               </p>
                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                 {stu.subjectProgress.map((sp) => (
                                   <div
                                     key={`${sp.examId}:${sp.subjectId}`}
-                                    className="rounded-lg bg-white border border-slate-200 px-3 py-2 text-xs space-y-1"
+                                    className="rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs space-y-1"
                                   >
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="font-semibold text-slate-900 truncate">
+                                      <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">
                                         {sp.examName} · {sp.subjectName}
                                       </span>
-                                      <span className="font-bold text-phosters-700 tabular-nums shrink-0">
+                                      <span className="font-bold text-phosters-700 dark:text-phosters-400 tabular-nums shrink-0">
                                         {sp.completionPct}%
                                       </span>
                                     </div>
-                                    <p className="text-slate-500 tabular-nums">
+                                    <p className="text-slate-500 dark:text-slate-400 tabular-nums">
                                       {sp.completedLessonsCount} completed · {sp.openedLessonsCount} opened · {sp.publishedLessonsCount} published
                                     </p>
                                   </div>

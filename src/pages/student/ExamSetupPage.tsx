@@ -233,15 +233,15 @@ export function ExamSetupPage() {
       <div className="space-y-2">
         <Link
           to="/app"
-          className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 hover:text-slate-900"
+          className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           <span>Back to Home</span>
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
           Examination &amp; subject selection
         </h1>
-        <p className="text-sm text-slate-600 leading-relaxed">
+        <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
           Choose JAMB UTME, UI Post-UTME, or both. Your subject choices are saved separately for each examination.
         </p>
       </div>
@@ -266,9 +266,9 @@ export function ExamSetupPage() {
             <Card key={exam.id} padding="lg" className="space-y-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
-                  <h2 className="text-lg font-bold text-slate-900">{exam.name}</h2>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{exam.name}</h2>
                   {exam.description && (
-                    <p className="text-sm text-slate-600 leading-relaxed">{exam.description}</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{exam.description}</p>
                   )}
                 </div>
 
@@ -281,7 +281,7 @@ export function ExamSetupPage() {
                     'min-h-[44px] px-4 py-2 rounded-lg text-sm font-semibold border transition-colors shrink-0 cursor-pointer',
                     draft.enabled
                       ? 'bg-phosters-600 text-white border-phosters-600 hover:bg-phosters-700'
-                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50',
+                      : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700',
                   ].join(' ')}
                 >
                   {draft.enabled ? 'Selected' : 'Select'}
@@ -289,7 +289,7 @@ export function ExamSetupPage() {
               </div>
 
               {draft.enabled && (
-                <div className="pt-4 border-t border-slate-100 space-y-5">
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Input
                       label="Intended course / programme (optional)"
@@ -320,14 +320,14 @@ export function ExamSetupPage() {
                   <div className="space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                           Subjects for {exam.name}{' '}
-                          <span className="font-normal text-slate-500 tabular-nums">
+                          <span className="font-normal text-slate-500 dark:text-slate-400 tabular-nums">
                             ({draft.subjectIds.length}
                             {isJamb ? ' / 4' : ''} selected)
                           </span>
                         </p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
                           {isJamb
                             ? 'English Language is included automatically. Pick 3 additional subjects.'
                             : 'Select the subjects required for your UI Post-UTME course.'}
@@ -347,7 +347,7 @@ export function ExamSetupPage() {
                     </div>
 
                     {exam.availableSubjects.length === 0 ? (
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
                         No subjects have been configured for this examination yet.
                       </p>
                     ) : (
@@ -367,8 +367,8 @@ export function ExamSetupPage() {
                                 'flex items-center justify-between gap-3 min-h-[48px] px-3.5 py-2.5 rounded-lg border text-left transition-colors',
                                 opt.isCompulsory ? 'cursor-default' : 'cursor-pointer',
                                 checked
-                                  ? 'bg-phosters-50 border-phosters-600 text-slate-900'
-                                  : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50',
+                                  ? 'bg-phosters-50 dark:bg-phosters-900/40 border-phosters-600 dark:border-phosters-500 text-slate-900 dark:text-slate-100'
+                                  : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800',
                               ].join(' ')}
                             >
                               <div className="min-w-0">
@@ -376,7 +376,7 @@ export function ExamSetupPage() {
                                   {opt.subject.name}
                                 </span>
                                 {opt.isCompulsory && (
-                                  <span className="block text-xs text-phosters-700">
+                                  <span className="block text-xs text-phosters-700 dark:text-phosters-400">
                                     Compulsory
                                   </span>
                                 )}
@@ -387,7 +387,7 @@ export function ExamSetupPage() {
                                   'h-5 w-5 rounded border flex items-center justify-center shrink-0',
                                   checked
                                     ? 'bg-phosters-600 border-phosters-600 text-white'
-                                    : 'border-slate-300 bg-white',
+                                    : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800',
                                 ].join(' ')}
                               >
                                 {checked && <Check className="h-3.5 w-3.5" />}
@@ -407,7 +407,7 @@ export function ExamSetupPage() {
         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
           <Link
             to="/app"
-            className="inline-flex items-center justify-center min-h-[48px] px-5 py-3 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
+            className="inline-flex items-center justify-center min-h-[48px] px-5 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
           >
             Cancel
           </Link>

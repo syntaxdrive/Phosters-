@@ -99,7 +99,7 @@ export function TestTakePage() {
       <div className="space-y-2">
         <Link
           to={test.lesson_id ? `/app/lessons/${test.lesson_id}` : '/app/subjects'}
-          className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 hover:text-slate-900"
+          className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           <span>{test.lesson_id ? 'Back to Lesson' : 'Back to Subjects'}</span>
@@ -107,14 +107,14 @@ export function TestTakePage() {
 
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
           <div className="space-y-1">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
               {test.title}
             </h1>
             {test.description && (
-              <p className="text-sm text-slate-600 leading-relaxed">{test.description}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{test.description}</p>
             )}
           </div>
-          <p className="text-sm font-medium text-slate-600 tabular-nums shrink-0">
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-400 tabular-nums shrink-0">
             Answered {answeredCount} of {questions.length}
           </p>
         </div>
@@ -122,7 +122,7 @@ export function TestTakePage() {
 
       {questions.length === 0 ? (
         <Card padding="lg">
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             This test does not have any questions yet.
           </p>
         </Card>
@@ -133,15 +133,15 @@ export function TestTakePage() {
             return (
               <Card key={question.id} padding="lg" className="space-y-4">
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-xs font-semibold text-phosters-700 tabular-nums">
+                  <span className="text-xs font-semibold text-phosters-700 dark:text-phosters-400 tabular-nums">
                     Question {index + 1} of {questions.length}
                   </span>
-                  <span className="text-xs text-slate-500 tabular-nums">
+                  <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                     {question.points} {question.points === 1 ? 'mark' : 'marks'}
                   </span>
                 </div>
 
-                <p className="text-base font-semibold text-slate-900 leading-relaxed whitespace-pre-line">
+                <p className="text-base font-semibold text-slate-900 dark:text-slate-100 leading-relaxed whitespace-pre-line">
                   {question.question_text}
                 </p>
 
@@ -158,8 +158,8 @@ export function TestTakePage() {
                         className={[
                           'w-full flex items-center justify-between gap-3 min-h-[52px] px-4 py-3 rounded-xl border text-left transition-colors cursor-pointer',
                           isSelected
-                            ? 'bg-phosters-50 border-phosters-600 text-slate-900'
-                            : 'bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50',
+                            ? 'bg-phosters-50 dark:bg-phosters-900/40 border-phosters-600 dark:border-phosters-500 text-slate-900 dark:text-slate-100'
+                            : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800',
                         ].join(' ')}
                       >
                         <div className="flex items-start gap-3 min-w-0">
@@ -168,7 +168,7 @@ export function TestTakePage() {
                               'inline-flex items-center justify-center h-7 w-7 rounded-md text-xs font-mono font-semibold shrink-0',
                               isSelected
                                 ? 'bg-phosters-600 text-white'
-                                : 'bg-slate-100 text-slate-700',
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300',
                             ].join(' ')}
                           >
                             {opt.option_key}
@@ -179,7 +179,7 @@ export function TestTakePage() {
                         </div>
                         {isSelected && (
                           <CheckCircle2
-                            className="h-5 w-5 text-phosters-600 shrink-0"
+                            className="h-5 w-5 text-phosters-600 dark:text-phosters-400 shrink-0"
                             aria-hidden="true"
                           />
                         )}
@@ -202,7 +202,7 @@ export function TestTakePage() {
           )}
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-            <p className="text-sm text-slate-600 tabular-nums">
+            <p className="text-sm text-slate-600 dark:text-slate-400 tabular-nums">
               {answeredCount} / {questions.length} answered
             </p>
             <div className="flex gap-3">

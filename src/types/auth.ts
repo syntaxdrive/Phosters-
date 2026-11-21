@@ -32,6 +32,8 @@ export interface AuthContextValue {
   session: Session | null;
   user: User | null;
   profile: Profile | null;
+  isPasswordRecovery: boolean;
+  clearPasswordRecovery: () => void;
   signUp: (input: SignUpInput) => Promise<AuthActionResult>;
   signIn: (input: SignInInput) => Promise<AuthActionResult>;
   signOut: () => Promise<{ error: string | null }>;
