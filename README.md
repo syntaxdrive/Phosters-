@@ -32,13 +32,15 @@ Copy `.env.example` to `.env` (or configure your hosting environment variables):
 VITE_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
 VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_OR_PUBLISHABLE_KEY
 
-# Optional: Enable native Web Push notifications (generate with: npx web-push generate-vapid-keys)
+# Enable native Web Push notifications (you can also generate keys in /admin/announcements)
 VITE_VAPID_PUBLIC_KEY=YOUR_PUBLIC_VAPID_KEY
 SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
 VAPID_PUBLIC_KEY=YOUR_PUBLIC_VAPID_KEY
 VAPID_PRIVATE_KEY=YOUR_PRIVATE_VAPID_KEY
 VAPID_SUBJECT=mailto:notifications@phosters.com
+
+# Optional: Only needed for unattended Cron inactivity reminders (admin sends use your Admin session + anon key)
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
 CRON_SECRET=YOUR_RANDOM_CRON_SECRET
 ```
 
@@ -52,6 +54,10 @@ In your Supabase **SQL Editor**, run the migration scripts in order:
 4. `supabase/migrations/004_admin_student_statistics.sql` — creates the admin-only `get_admin_student_contacts()` RPC so admins can view student email addresses and last sign-in activity for follow-up emails.
 5. `supabase/migrations/005_admin_announcements.sql` — creates `announcements` and `announcement_links` with audience targeting and scoped RLS policies.
 6. `supabase/migrations/006_push_notifications.sql` — creates `push_subscriptions` and `push_notification_logs` for native background Web Push notifications and daily study/test reminders.
+7. `supabase/migrations/007_topic_comments_and_social.sql` — adds topic comments, social engagement tables, and policies.
+8. `supabase/migrations/008_subject_comments_support.sql` — adds subject-level comments support.
+9. `supabase/migrations/009_admin_push_delivery_rls.sql` — allows admins to prune expired push subscriptions and stamp `last_notified_at` using their signed-in Admin session without needing `SUPABASE_SERVICE_ROLE_KEY`.
+10. `supabase/migrations/010_super_admin_role_management.sql` — designates `oyasordaniel@gmail.com` as Super Admin and enables upgrading user accounts to Tutor/Admin directly from `/admin/accounts` without manual SQL.
 
 ### 4. Configure Supabase Auth URLs
 In **Authentication -> URL Configuration**:
@@ -61,15 +67,9 @@ In **Authentication -> URL Configuration**:
   - `http://localhost:3000/reset-password`
   - Plus your production URL equivalents when deploying to Vercel.
 
-### 5. Create Your First Admin Account
-1. Sign up normally through `/signup` in the app.
-2. In the Supabase **SQL Editor**, promote your account using the trusted helper:
-
-```sql
-select public.promote_user_to_admin('your-admin-email@example.com');
-```
-
-3. Sign out and sign back in (or refresh the profile) to access `/admin`.
+### 5. Super Admin & Tutor Accounts
+1. Sign up normally through `/signup` with `oyasordaniel@gmail.com` (migration `010` automatically assigns Super Admin access).
+2. To upgrade additional tutors without SQL, have each tutor register normally via `/signup`, then open **Admin -> Tutor Access** (`/admin/accounts`) while signed in as `oyasordaniel@gmail.com` and click **Upgrade to Tutor**.
 
 ---
 

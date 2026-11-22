@@ -1,6 +1,8 @@
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
+import { isSuperAdminUser } from '../../lib/superAdmin';
 
-const adminLinks = [
+const baseAdminLinks = [
   { to: '/admin', label: 'Overview', end: true },
   { to: '/admin/students', label: 'Students', end: false },
   { to: '/admin/announcements', label: 'Announcements', end: false },
@@ -9,9 +11,16 @@ const adminLinks = [
   { to: '/admin/topics', label: 'Topics', end: false },
   { to: '/admin/lessons', label: 'Lessons', end: false },
   { to: '/admin/tests', label: 'Tests', end: false },
+  { to: '/admin/guide', label: 'Tutor Guide', end: false },
 ];
 
 export function AdminNav() {
+  const { user, profile } = useAuth();
+  const isSuperAdmin = isSuperAdminUser(user?.email, profile?.role);
+  const adminLinks = isSuperAdmin
+    ? [...baseAdminLinks, { to: '/admin/accounts', label: 'Tutor Access', end: false }]
+    : baseAdminLinks;
+
   return (
     <nav
       aria-label="Admin sections"

@@ -11,6 +11,7 @@ import { useAuth } from './hooks/useAuth';
 import { AppShell } from './components/layout/AppShell';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 import { AdminRoute } from './components/layout/AdminRoute';
+import { SuperAdminRoute } from './components/layout/SuperAdminRoute';
 import { LoadingState } from './components/ui/States';
 
 const LandingPage = lazy(() =>
@@ -100,6 +101,12 @@ const AdminTestsPage = lazy(() =>
 const AdminTestEditorPage = lazy(() =>
   import('./pages/admin/AdminTestEditorPage').then((m) => ({ default: m.AdminTestEditorPage }))
 );
+const AdminTutorGuidePage = lazy(() =>
+  import('./pages/admin/AdminTutorGuidePage').then((m) => ({ default: m.AdminTutorGuidePage }))
+);
+const AdminAccountsPage = lazy(() =>
+  import('./pages/admin/AdminAccountsPage').then((m) => ({ default: m.AdminAccountsPage }))
+);
 const NotFoundPage = lazy(() =>
   import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage }))
 );
@@ -162,6 +169,10 @@ export default function App() {
                     <Route path="/admin/lessons/:lessonId" element={<AdminLessonEditorPage />} />
                     <Route path="/admin/tests" element={<AdminTestsPage />} />
                     <Route path="/admin/tests/:testId" element={<AdminTestEditorPage />} />
+                    <Route path="/admin/guide" element={<AdminTutorGuidePage />} />
+                    <Route element={<SuperAdminRoute />}>
+                      <Route path="/admin/accounts" element={<AdminAccountsPage />} />
+                    </Route>
                   </Route>
                 </Route>
 

@@ -819,6 +819,33 @@ export type Database = {
           comments_count: number;
         }>;
       };
+      is_super_admin: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      get_admin_managed_accounts: {
+        Args: Record<string, never>;
+        Returns: Array<{
+          user_id: string;
+          full_name: string;
+          email: string | null;
+          phone: string | null;
+          role: string;
+          is_super_admin: boolean;
+          created_at: string;
+          last_sign_in_at: string | null;
+        }>;
+      };
+      set_user_account_role: {
+        Args: {
+          p_target_user_id: string;
+          p_new_role: string;
+        };
+        Returns: Array<{
+          user_id: string;
+          role: string;
+        }>;
+      };
     };
     Enums: {
       [_ in never]: never;

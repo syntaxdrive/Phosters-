@@ -65,3 +65,151 @@
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* CSS Motion Graphics keyframes (compositor-only transforms, opacity, and SVG stroke) */
+@keyframes mg-rise {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes mg-pop {
+  0% {
+    opacity: 0;
+    transform: scale3d(0.92, 0.92, 1);
+  }
+  70% {
+    opacity: 1;
+    transform: scale3d(1.02, 1.02, 1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale3d(1, 1, 1);
+  }
+}
+
+@keyframes mg-slide-right {
+  0% {
+    opacity: 0;
+    transform: translate3d(26px, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes mg-draw-line {
+  0% {
+    stroke-dashoffset: 160;
+    opacity: 0.25;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes mg-cursor-glide {
+  0% {
+    opacity: 0;
+    transform: translate3d(0px, 0px, 0) scale(1);
+  }
+  15% {
+    opacity: 1;
+    transform: translate3d(0px, 0px, 0) scale(1);
+  }
+  42% {
+    transform: translate3d(78px, 34px, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(78px, 34px, 0) scale(0.86);
+  }
+  58% {
+    transform: translate3d(78px, 34px, 0) scale(1);
+  }
+  82% {
+    opacity: 1;
+    transform: translate3d(146px, -8px, 0) scale(1);
+  }
+  90% {
+    transform: translate3d(146px, -8px, 0) scale(0.86);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(146px, -8px, 0) scale(1);
+  }
+}
+
+@keyframes mg-packet-travel {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0);
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(108px, 0, 0);
+  }
+}
+
+@keyframes mg-beacon-ring {
+  0% {
+    opacity: 0.75;
+    transform: scale3d(0.95, 0.95, 1);
+  }
+  70% {
+    opacity: 0;
+    transform: scale3d(1.18, 1.18, 1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale3d(1.18, 1.18, 1);
+  }
+}
+
+.mg-anim-rise {
+  animation: mg-rise 550ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.mg-anim-pop {
+  animation: mg-pop 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.mg-anim-slide-right {
+  animation: mg-slide-right 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.mg-anim-draw {
+  stroke-dasharray: 160;
+  animation: mg-draw-line 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.mg-anim-cursor {
+  animation: mg-cursor-glide 3.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.mg-anim-packet {
+  animation: mg-packet-travel 2.2s linear infinite;
+}
+
+.mg-anim-ring {
+  animation: mg-beacon-ring 1.9s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.mg-paused *,
+.mg-paused *::before,
+.mg-paused *::after {
+  animation-play-state: paused !important;
+}
+

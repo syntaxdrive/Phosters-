@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, FolderGit2, Plus } from 'lucide-react';
+import { ArrowRight, FolderGit2, PlayCircle, Plus } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { isSuperAdminUser } from '../../lib/superAdmin';
 import { fetchAdminOverviewCounts } from '../../services/adminService';
 import type { AdminOverviewCounts } from '../../types/admin';
 import { AdminNav } from '../../components/admin/AdminNav';
@@ -10,6 +11,7 @@ import { ErrorState, LoadingState } from '../../components/ui/States';
 
 export function AdminDashboardPage() {
   const { user, profile } = useAuth();
+  const isSuperAdmin = isSuperAdminUser(user?.email, profile?.role);
   const [counts, setCounts] = useState<AdminOverviewCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,13 +47,22 @@ export function AdminDashboardPage() {
           </div>
         </div>
 
-        <Link
-          to="/admin/lessons/new"
-          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-phosters-600 text-white text-sm font-semibold hover:bg-phosters-700 transition-colors self-start sm:self-auto whitespace-nowrap"
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          <span>New Lesson</span>
-        </Link>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <Link
+            to="/admin/guide"
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
+          >
+            <PlayCircle className="h-4 w-4 text-phosters-600 dark:text-phosters-400" aria-hidden="true" />
+            <span>Watch Tutor Guide</span>
+          </Link>
+          <Link
+            to="/admin/lessons/new"
+            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-phosters-600 text-white text-sm font-semibold hover:bg-phosters-700 transition-colors whitespace-nowrap shrink-0"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            <span>New Lesson</span>
+          </Link>
+        </div>
       </div>
 
       <AdminNav />
@@ -129,6 +140,15 @@ export function AdminDashboardPage() {
               <span>Broadcast Announcements</span>
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
+            {isSuperAdmin && (
+              <Link
+                to="/admin/accounts"
+                className="inline-flex items-center gap-1.5 min-h-[44px] px-4 py-2 rounded-lg border border-phosters-200 dark:border-phosters-800 bg-phosters-50/70 dark:bg-phosters-950/40 text-sm font-semibold text-phosters-800 dark:text-phosters-300 hover:bg-phosters-100/70 dark:hover:bg-phosters-900/50 transition-colors"
+              >
+                <span>Upgrade Tutor Accounts</span>
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            )}
           </div>
         </Card>
 

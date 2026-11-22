@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { KeyRound, LogOut } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { isSuperAdminUser } from '../../lib/superAdmin';
 import { validateFullName, validateOptionalPhone, validatePassword } from '../../lib/validation';
 import { PWAInstallButton } from '../../components/pwa/PWAInstallButton';
 import { PushNotificationSettings } from '../../components/pwa/PushNotificationSettings';
@@ -114,7 +115,13 @@ export function ProfilePage() {
       <div className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">Profile</h1>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500 dark:text-slate-400">
-          <span>{profile?.role === 'admin' ? 'Administrator' : 'Student'}</span>
+          <span>
+            {isSuperAdminUser(user?.email, profile?.role)
+              ? 'Super Administrator'
+              : profile?.role === 'admin'
+                ? 'Tutor / Administrator'
+                : 'Student'}
+          </span>
           {joinedDate && (
             <>
               <span aria-hidden="true">·</span>
