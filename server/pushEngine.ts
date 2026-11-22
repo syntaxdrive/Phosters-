@@ -183,6 +183,7 @@ export async function verifyAdminAuthorization(authorizationHeader: string | und
   ok: boolean;
   status: number;
   userId?: string;
+  userEmail?: string | null;
   client?: SupabaseClient<Database>;
   usingServiceRole?: boolean;
   error?: string;
@@ -222,6 +223,7 @@ export async function verifyAdminAuthorization(authorizationHeader: string | und
     ok: true,
     status: 200,
     userId: userData.user.id,
+    userEmail: userData.user.email ?? null,
     client,
     usingServiceRole: Boolean(serviceRes?.client),
   };

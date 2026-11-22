@@ -708,6 +708,117 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      question_bank_batches: {
+        Row: {
+          id: string;
+          file_name: string;
+          source_format: 'pdf' | 'docx' | 'txt' | 'csv' | 'md' | 'html' | 'rtf' | 'paste';
+          exam_id: string | null;
+          subject_id: string | null;
+          exam_year: number | null;
+          raw_char_count: number;
+          imported_count: number;
+          uploaded_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          file_name: string;
+          source_format: 'pdf' | 'docx' | 'txt' | 'csv' | 'md' | 'html' | 'rtf' | 'paste';
+          exam_id?: string | null;
+          subject_id?: string | null;
+          exam_year?: number | null;
+          raw_char_count?: number;
+          imported_count?: number;
+          uploaded_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          imported_count?: number;
+        };
+        Relationships: [];
+      };
+      question_bank: {
+        Row: {
+          id: string;
+          batch_id: string | null;
+          exam_id: string | null;
+          subject_id: string | null;
+          topic_id: string | null;
+          exam_year: number | null;
+          difficulty: 'easy' | 'medium' | 'hard';
+          section_label: string | null;
+          question_text: string;
+          explanation: string | null;
+          points: number;
+          needs_diagram: boolean;
+          status: 'draft' | 'approved';
+          source_reference: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          batch_id?: string | null;
+          exam_id?: string | null;
+          subject_id?: string | null;
+          topic_id?: string | null;
+          exam_year?: number | null;
+          difficulty?: 'easy' | 'medium' | 'hard';
+          section_label?: string | null;
+          question_text: string;
+          explanation?: string | null;
+          points?: number;
+          needs_diagram?: boolean;
+          status?: 'draft' | 'approved';
+          source_reference?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          exam_id?: string | null;
+          subject_id?: string | null;
+          topic_id?: string | null;
+          exam_year?: number | null;
+          difficulty?: 'easy' | 'medium' | 'hard';
+          section_label?: string | null;
+          question_text?: string;
+          explanation?: string | null;
+          points?: number;
+          needs_diagram?: boolean;
+          status?: 'draft' | 'approved';
+          source_reference?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      question_bank_options: {
+        Row: {
+          id: string;
+          bank_question_id: string;
+          option_key: string;
+          option_text: string;
+          is_correct: boolean;
+          display_order: number;
+        };
+        Insert: {
+          id?: string;
+          bank_question_id: string;
+          option_key: string;
+          option_text: string;
+          is_correct?: boolean;
+          display_order?: number;
+        };
+        Update: {
+          option_key?: string;
+          option_text?: string;
+          is_correct?: boolean;
+          display_order?: number;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;

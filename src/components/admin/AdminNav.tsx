@@ -18,7 +18,11 @@ export function AdminNav() {
   const { user, profile } = useAuth();
   const isSuperAdmin = isSuperAdminUser(user?.email, profile?.role);
   const adminLinks = isSuperAdmin
-    ? [...baseAdminLinks, { to: '/admin/accounts', label: 'Tutor Access', end: false }]
+    ? [
+        ...baseAdminLinks,
+        { to: '/admin/question-bank', label: 'Question Bank', end: false },
+        { to: '/admin/accounts', label: 'Tutor Access', end: false },
+      ]
     : baseAdminLinks;
 
   return (

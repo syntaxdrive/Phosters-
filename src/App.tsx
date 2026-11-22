@@ -107,6 +107,9 @@ const AdminTutorGuidePage = lazy(() =>
 const AdminAccountsPage = lazy(() =>
   import('./pages/admin/AdminAccountsPage').then((m) => ({ default: m.AdminAccountsPage }))
 );
+const AdminQuestionBankPage = lazy(() =>
+  import('./pages/admin/AdminQuestionBankPage').then((m) => ({ default: m.AdminQuestionBankPage }))
+);
 const NotFoundPage = lazy(() =>
   import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage }))
 );
@@ -172,6 +175,7 @@ export default function App() {
                     <Route path="/admin/guide" element={<AdminTutorGuidePage />} />
                     <Route element={<SuperAdminRoute />}>
                       <Route path="/admin/accounts" element={<AdminAccountsPage />} />
+                      <Route path="/admin/question-bank" element={<AdminQuestionBankPage />} />
                     </Route>
                   </Route>
                 </Route>

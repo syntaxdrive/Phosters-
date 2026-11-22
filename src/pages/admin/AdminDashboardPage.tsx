@@ -141,13 +141,22 @@ export function AdminDashboardPage() {
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
             {isSuperAdmin && (
-              <Link
-                to="/admin/accounts"
-                className="inline-flex items-center gap-1.5 min-h-[44px] px-4 py-2 rounded-lg border border-phosters-200 dark:border-phosters-800 bg-phosters-50/70 dark:bg-phosters-950/40 text-sm font-semibold text-phosters-800 dark:text-phosters-300 hover:bg-phosters-100/70 dark:hover:bg-phosters-900/50 transition-colors"
-              >
-                <span>Upgrade Tutor Accounts</span>
-                <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </Link>
+              <>
+                <Link
+                  to="/admin/question-bank"
+                  className="inline-flex items-center gap-1.5 min-h-[44px] px-4 py-2 rounded-lg border border-phosters-200 dark:border-phosters-800 bg-phosters-50/70 dark:bg-phosters-950/40 text-sm font-semibold text-phosters-800 dark:text-phosters-300 hover:bg-phosters-100/70 dark:hover:bg-phosters-900/50 transition-colors"
+                >
+                  <span>Question Bank</span>
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+                <Link
+                  to="/admin/accounts"
+                  className="inline-flex items-center gap-1.5 min-h-[44px] px-4 py-2 rounded-lg border border-phosters-200 dark:border-phosters-800 bg-phosters-50/70 dark:bg-phosters-950/40 text-sm font-semibold text-phosters-800 dark:text-phosters-300 hover:bg-phosters-100/70 dark:hover:bg-phosters-900/50 transition-colors"
+                >
+                  <span>Upgrade Tutor Accounts</span>
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+              </>
             )}
           </div>
         </Card>

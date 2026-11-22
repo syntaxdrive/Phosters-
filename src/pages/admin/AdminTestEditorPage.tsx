@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowDown, ArrowLeft, ArrowUp, BellRing, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, BellRing, BookOpenCheck, Plus, Trash2 } from 'lucide-react';
 import { fetchAdminLessonsList } from '../../services/adminService';
 import { fetchTestForAdminEditor, saveAdminTest } from '../../services/cbtService';
 import { triggerPushNotification } from '../../services/pushService';
+import { fetchApprovedBankQuestionsForTestBuilder } from '../../services/questionBankService';
 import type { AdminLessonListItem } from '../../types/admin';
 import type { AdminQuestionDraft } from '../../types/cbt';
 import type { Exam, Subject, Topic } from '../../types/database';
+import type { QuestionDifficulty } from '../../types/questionBank';
 import { AdminNav } from '../../components/admin/AdminNav';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
@@ -65,6 +67,16 @@ export function AdminTestEditorPage() {
   const [pushNotice, setPushNotice] = useState<{ tone: 'success' | 'info' | 'error'; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [sendingPush, setSendingPush] = useState(false);
+
+  // Pull from Question Bank state (available to all authorized Tutors)
+  const [bankOpen, setBankOpen] = useState(false);
+  const [bankMatchScope, setBankMatchScope] = useState<'exam_subject' | 'subject_only' | 'all'>('exam_subject');
+  const [bankYearInput, setBankYearInput] = useState('');
+  const [bankDifficulty, setBankDifficulty] = useState<QuestionDifficulty | ''>('');
+  const [bankExcludeDiagrams, setBankExcludeDiagrams] = useState(true);
+  const [bankCount, setBankCount] = useState(10);
+  const [bankLoading, setBankLoading] = useState(false);
+  const [bankFeedback, setBankFeedback] = useState<{ tone: 'success' | 'info' | 'error'; message: string } | null>(null);
 
   const loadEditor = useCallback(async () => {
     setLoading(true);
@@ -304,6 +316,102 @@ export function AdminTestEditorPage() {
     }
   }
 
+  async function handlePullFromQuestionBank(overrideCount?: number) {
+    const requestedCount = Math.max(1, Math.min(100, overrideCount ?? bankCount));
+    if (overrideCount) setBankCount(overrideCount);
+    setBankFeedback(null);
+    setBankLoading(true);
+
+    const parsedYear = Number(bankYearInput.trim());
+    const validYear =
+      Number.isFinite(parsedYear) && parsedYear >= 1978 && parsedYear <= 2035
+        ? parsedYear
+        : null;
+
+    const res = await fetchApprovedBankQuestionsForTestBuilder({
+      examId: bankMatchScope === 'exam_subject' ? selectedExamId : undefined,
+      subjectId: bankMatchScope !== 'all' ? selectedSubjectId : undefined,
+      examYear: validYear,
+      difficulty: bankDifficulty,
+      excludeDiagrams: bankExcludeDiagrams,
+      count: requestedCount,
+    });
+
+    setBankLoading(false);
+
+    if (res.migrationMissing) {
+      setBankFeedback({
+        tone: 'info',
+        message: 'Question Bank tables have not been migrated yet. Ask Super Admin to run migration 011.',
+      });
+      return;
+    }
+
+    if (res.error) {
+      setBankFeedback({ tone: 'error', message: res.error });
+      return;
+    }
+
+    if (res.items.length === 0) {
+      setBankFeedback({
+        tone: 'info',
+        message: 'No approved Question Bank items matched those filters. Try broadening scope to Any Exam (Same Subject).',
+      });
+      return;
+    }
+
+    const existingTexts = new Set(
+      questions.map((q) => q.question_text.trim().toLowerCase()).filter(Boolean)
+    );
+
+    const incomingDrafts: AdminQuestionDraft[] = [];
+    for (const item of res.items) {
+      const normalized = item.question_text.trim().toLowerCase();
+      if (existingTexts.has(normalized)) continue;
+      existingTexts.add(normalized);
+
+      const mappedOpts = item.options.map((opt, idx) => ({
+        localKey: newKey(),
+        option_key: opt.option_key || OPTION_KEYS[idx] || String(idx + 1),
+        option_text: opt.option_text,
+        is_correct: opt.is_correct,
+      }));
+      if (mappedOpts.length >= 2 && !mappedOpts.some((o) => o.is_correct)) {
+        mappedOpts[0] = { ...mappedOpts[0], is_correct: true };
+      }
+      if (mappedOpts.length < 2) continue;
+
+      incomingDrafts.push({
+        localKey: newKey(),
+        question_text: item.question_text,
+        explanation: item.explanation ?? '',
+        points: item.points || 1,
+        options: mappedOpts,
+      });
+    }
+
+    if (incomingDrafts.length === 0) {
+      setBankFeedback({
+        tone: 'info',
+        message: 'All matching bank questions are already in this test draft.',
+      });
+      return;
+    }
+
+    setQuestions((prev) => {
+      const isOnlyBlankStarter =
+        prev.length === 1 &&
+        !prev[0].question_text.trim() &&
+        prev[0].options.every((o) => !o.option_text.trim());
+      return isOnlyBlankStarter ? incomingDrafts : [...prev, ...incomingDrafts];
+    });
+
+    setBankFeedback({
+      tone: 'success',
+      message: `Added ${incomingDrafts.length} approved questions from the Question Bank. Review and save when ready.`,
+    });
+  }
+
   if (loading) return <LoadingState message="Loading test editor..." />;
   if (loadError) return <ErrorState message={loadError} onRetry={() => void loadEditor()} />;
 
@@ -530,21 +638,159 @@ export function AdminTestEditorPage() {
         </Card>
 
         <section aria-labelledby="questions-heading" className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 id="questions-heading" className="text-lg font-bold text-slate-900 dark:text-slate-100">
               Questions ({questions.length})
             </h2>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() =>
-                setQuestions((prev) => [...prev, createEmptyQuestion()])
-              }
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              <span>Add Question</span>
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setBankOpen((v) => !v)}
+              >
+                <BookOpenCheck className="h-4 w-4 text-phosters-600 dark:text-phosters-400" aria-hidden="true" />
+                <span>{bankOpen ? 'Hide Question Bank' : 'Pull from Question Bank'}</span>
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() =>
+                  setQuestions((prev) => [...prev, createEmptyQuestion()])
+                }
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                <span>Add Question</span>
+              </Button>
+            </div>
           </div>
+
+          {bankOpen && (
+            <Card padding="lg" className="space-y-4 border-phosters-200 dark:border-phosters-800/80">
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Pull approved past questions into this test
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Randomly draws non-duplicate approved questions curated in the Phosters Question Bank.
+                </p>
+              </div>
+
+              {bankFeedback && <Alert tone={bankFeedback.tone}>{bankFeedback.message}</Alert>}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Scope
+                  </label>
+                  <select
+                    value={bankMatchScope}
+                    onChange={(e) =>
+                      setBankMatchScope(e.target.value as 'exam_subject' | 'subject_only' | 'all')
+                    }
+                    className="w-full min-h-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
+                  >
+                    <option value="exam_subject">Selected Exam &amp; Subject</option>
+                    <option value="subject_only">Selected Subject (Any Exam)</option>
+                    <option value="all">All Approved Bank Questions</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Difficulty
+                  </label>
+                  <select
+                    value={bankDifficulty}
+                    onChange={(e) => setBankDifficulty(e.target.value as QuestionDifficulty | '')}
+                    className="w-full min-h-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
+                  >
+                    <option value="">Any Difficulty</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Exam Year (optional)
+                  </label>
+                  <input
+                    type="number"
+                    min={1978}
+                    max={2035}
+                    placeholder="Any year"
+                    value={bankYearInput}
+                    onChange={(e) => setBankYearInput(e.target.value)}
+                    className="w-full min-h-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Questions to add
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={bankCount}
+                    onChange={(e) => setBankCount(Math.max(1, Math.min(100, Number(e.target.value) || 10)))}
+                    className="w-full min-h-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100 tabular-nums"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="inline-flex items-center gap-2 min-h-[36px] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={bankExcludeDiagrams}
+                    onChange={(e) => setBankExcludeDiagrams(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-phosters-600 focus:ring-phosters-600"
+                  />
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Exclude questions that require external diagrams or graphs
+                  </span>
+                </label>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    loading={bankLoading}
+                    onClick={() => void handlePullFromQuestionBank(25)}
+                  >
+                    +25 UI Post-UTME
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    loading={bankLoading}
+                    onClick={() => void handlePullFromQuestionBank(40)}
+                  >
+                    +40 JAMB Subject
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    loading={bankLoading}
+                    onClick={() => void handlePullFromQuestionBank(60)}
+                  >
+                    +60 JAMB English
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    loading={bankLoading}
+                    onClick={() => void handlePullFromQuestionBank()}
+                  >
+                    Add {bankCount} Questions
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
 
           {questions.map((q, qIndex) => (
             <Card key={q.localKey} padding="lg" className="space-y-4">

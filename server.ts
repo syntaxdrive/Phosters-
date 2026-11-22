@@ -13,7 +13,18 @@ import {
   verifyAdminAuthorization,
   verifyCronOrAdminAuthorization,
 } from './server/pushEngine.ts';
+import {
+  convertUploadedDocument,
+  ocrScannedPdfWithGemini,
+  parseQuestionChunkWithGemini,
+  verifySuperAdminAuthorization,
+} from './server/questionBankEngine.ts';
 import type { RemindInactiveInput, SendPushPayload } from './src/types/push.ts';
+import type {
+  ConvertDocumentRequest,
+  OcrPdfRequest,
+  ParseChunkRequest,
+} from './src/types/questionBank.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +32,7 @@ const __dirname = path.dirname(__filename);
 async function createServer() {
   const app = express();
   const httpServer = http.createServer(app);
+  app.use('/api/question-bank', express.json({ limit: '24mb' }));
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/api/push/config', (_req, res) => {
@@ -116,6 +128,87 @@ async function createServer() {
       console.error('Express /api/push/remind-inactive error:', err);
       res.status(500).json({
         error: err instanceof Error ? err.message : 'Unexpected push reminder error.',
+      });
+    }
+  });
+
+  app.post('/api/question-bank/convert', async (req, res) => {
+    try {
+      const authCheck = await verifySuperAdminAuthorization(req.headers.authorization);
+      if (!authCheck.ok) {
+        res.status(authCheck.status).json({ error: authCheck.error });
+        return;
+      }
+
+      const body = req.body as ConvertDocumentRequest | undefined;
+      if (!body || typeof body !== 'object' || typeof body.fileBase64 !== 'string') {
+        res.status(400).json({ error: 'Invalid document conversion payload.' });
+        return;
+      }
+
+      const result = await convertUploadedDocument(body);
+      res.status(result.status).json(result.body);
+    } catch (err) {
+      console.error('Express /api/question-bank/convert error:', err);
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? `Document conversion error: ${err.message}`
+            : 'Unexpected document conversion error.',
+      });
+    }
+  });
+
+  app.post('/api/question-bank/ocr-pdf', async (req, res) => {
+    try {
+      const authCheck = await verifySuperAdminAuthorization(req.headers.authorization);
+      if (!authCheck.ok) {
+        res.status(authCheck.status).json({ error: authCheck.error });
+        return;
+      }
+
+      const body = req.body as OcrPdfRequest | undefined;
+      if (!body || typeof body !== 'object' || typeof body.fileBase64 !== 'string') {
+        res.status(400).json({ error: 'Invalid PDF OCR payload.' });
+        return;
+      }
+
+      const result = await ocrScannedPdfWithGemini(body);
+      res.status(result.status).json(result.body);
+    } catch (err) {
+      console.error('Express /api/question-bank/ocr-pdf error:', err);
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? `PDF OCR error: ${err.message}`
+            : 'Unexpected PDF OCR error.',
+      });
+    }
+  });
+
+  app.post('/api/question-bank/parse-chunk', async (req, res) => {
+    try {
+      const authCheck = await verifySuperAdminAuthorization(req.headers.authorization);
+      if (!authCheck.ok) {
+        res.status(authCheck.status).json({ error: authCheck.error });
+        return;
+      }
+
+      const body = req.body as ParseChunkRequest | undefined;
+      if (!body || typeof body !== 'object' || typeof body.chunkText !== 'string') {
+        res.status(400).json({ error: 'Invalid question chunk parsing payload.' });
+        return;
+      }
+
+      const result = await parseQuestionChunkWithGemini(body);
+      res.status(result.status).json(result.body);
+    } catch (err) {
+      console.error('Express /api/question-bank/parse-chunk error:', err);
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? `Question parsing error: ${err.message}`
+            : 'Unexpected question parsing error.',
       });
     }
   });
