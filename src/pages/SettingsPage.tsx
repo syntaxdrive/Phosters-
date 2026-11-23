@@ -6,19 +6,26 @@ import {
   BookOpen,
   CheckCircle2,
   FileText,
+  HardDrive,
   LogOut,
   Monitor,
   Moon,
+  RefreshCw,
   Shield,
   Sun,
+  Trash2,
   User,
 } from 'lucide-react';
 import { LEGAL_CONTACT_EMAIL, LEGAL_DOCUMENTS } from '../data/legalPolicies';
 import { useAuth } from '../hooks/useAuth';
+import { useOfflineSync } from '../hooks/useOfflineSync';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
+import { clearAllOfflineDataForUser } from '../lib/offlineDb';
+import { formatBytes } from '../services/offlineSyncService';
 import { PushNotificationSettings } from '../components/pwa/PushNotificationSettings';
 import { PWAInstallButton } from '../components/pwa/PWAInstallButton';
+import { Alert } from '../components/ui/Alert';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 
@@ -45,10 +52,22 @@ const THEME_OPTIONS: { value: ThemeMode; label: string; description: string; ico
 
 export function SettingsPage() {
   const { user, profile, signOut } = useAuth();
+  const {
+    isOnline,
+    isSyncing,
+    summary,
+    pendingCount,
+    totalBytes,
+    refreshVault,
+    syncNow,
+  } = useOfflineSync();
   const { theme, resolvedTheme, setTheme } = useTheme();
   const { isInstalled } = usePWAInstall();
   const navigate = useNavigate();
   const [signingOut, setSigningOut] = useState(false);
+  const [clearingOffline, setClearingOffline] = useState(false);
+  const [confirmClearOffline, setConfirmClearOffline] = useState(false);
+  const [offlineStatus, setOfflineStatus] = useState<string | null>(null);
 
   const isAdmin = profile?.role === 'admin';
 
@@ -57,6 +76,16 @@ export function SettingsPage() {
     await signOut();
     setSigningOut(false);
     navigate('/login');
+  }
+
+  async function handleClearOfflineStorage() {
+    if (!user) return;
+    setClearingOffline(true);
+    await clearAllOfflineDataForUser(user.id);
+    await refreshVault();
+    setClearingOffline(false);
+    setConfirmClearOffline(false);
+    setOfflineStatus('Cleared all offline lessons, PDFs, and cached data on this device.');
   }
 
   return (
@@ -172,6 +201,79 @@ export function SettingsPage() {
         </Card>
       ) : (
         <PWAInstallButton variant="card" />
+      )}
+
+      {/* Offline Study & Device Storage */}
+      {user && (
+        <Card padding="lg" className="space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-lg bg-phosters-50 dark:bg-phosters-900/50 border border-phosters-200 dark:border-phosters-800 flex items-center justify-center text-phosters-700 dark:text-phosters-400 shrink-0 mt-0.5">
+              <HardDrive className="h-4 w-4" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 flex-1 space-y-1">
+              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                Offline Study &amp; Storage
+              </h2>
+              <p className="text-sm text-slate-600 dark:text-slate-400 tabular-nums">
+                {summary?.savedLessons.length ?? 0} saved lessons ·{' '}
+                {summary?.savedMaterials.length ?? 0} study PDFs ·{' '}
+                {summary?.savedTests.length ?? 0} practice tests ·{' '}
+                {formatBytes(totalBytes)} used
+                {pendingCount > 0 ? ` · ${pendingCount} pending sync` : ''}
+              </p>
+            </div>
+          </div>
+
+          {offlineStatus && <Alert tone="info">{offlineStatus}</Alert>}
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Link
+              to="/app/offline"
+              className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg bg-phosters-600 text-white text-sm font-semibold hover:bg-phosters-700 transition-colors"
+            >
+              Open Offline Library
+            </Link>
+
+            {pendingCount > 0 && (
+              <Button
+                variant="secondary"
+                loading={isSyncing}
+                disabled={!isOnline}
+                onClick={() => void syncNow()}
+              >
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                <span>Sync Pending ({pendingCount})</span>
+              </Button>
+            )}
+
+            {totalBytes > 0 &&
+              (!confirmClearOffline ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => setConfirmClearOffline(true)}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  <span>Clear Offline Storage</span>
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={() => setConfirmClearOffline(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="danger"
+                    loading={clearingOffline}
+                    onClick={() => void handleClearOfflineStorage()}
+                  >
+                    Confirm Clear
+                  </Button>
+                </div>
+              ))}
+          </div>
+        </Card>
       )}
 
       {/* Account shortcuts when logged in */}

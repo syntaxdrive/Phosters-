@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Settings2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useOfflineSync } from '../../hooks/useOfflineSync';
 import {
   buildCourseTargetKey,
   fetchEngagementStats,
@@ -21,6 +22,7 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/ui/States
 
 export function SubjectsPage() {
   const { user } = useAuth();
+  const { downloadedSubjectKeys } = useOfflineSync();
 
   const [enrollments, setEnrollments] = useState<StudentEnrolledExam[]>([]);
   const [lessonCounts, setLessonCounts] = useState<Map<string, number>>(new Map());
@@ -58,7 +60,7 @@ export function SubjectsPage() {
     );
 
     const [countsRes, statsRes] = await Promise.all([
-      fetchLessonCountsByExamSubject(examIds, subjectIds),
+      fetchLessonCountsByExamSubject(examIds, subjectIds, user.id),
       fetchEngagementStats(courseTargets),
     ]);
 
@@ -257,6 +259,9 @@ export function SubjectsPage() {
                         )}
                         <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums">
                           {count === 1 ? '1 published lesson' : `${count} published lessons`}
+                          {downloadedSubjectKeys.has(`${enrollment.exam.slug}:${subject.slug}`) && (
+                            <span className="text-phosters-700 dark:text-phosters-400"> · Saved offline</span>
+                          )}
                         </p>
                       </Link>
 

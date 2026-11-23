@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, RotateCcw, Share2, XCircle } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 import { fetchAttemptReview, fetchTestCourseContext } from '../../services/cbtService';
 import type { AttemptReviewPayload } from '../../types/cbt';
 import { ShareDialog, buildTestResultSharePayload } from '../../components/social/ShareDialog';
@@ -11,6 +12,7 @@ import { ErrorState, LoadingState } from '../../components/ui/States';
 
 export function TestResultDetailPage() {
   const { attemptId = '' } = useParams();
+  const { user } = useAuth();
 
   const [review, setReview] = useState<AttemptReviewPayload | null>(null);
   const [courseContext, setCourseContext] = useState<{
@@ -25,7 +27,7 @@ export function TestResultDetailPage() {
     if (!attemptId) return;
     setLoading(true);
     setError(null);
-    const res = await fetchAttemptReview(attemptId);
+    const res = await fetchAttemptReview(attemptId, user?.id);
     if (res.error || !res.review) {
       setError(res.error || 'Result not found.');
       setLoading(false);
@@ -33,12 +35,14 @@ export function TestResultDetailPage() {
     }
     const ctx = await fetchTestCourseContext(
       res.review.attempt.topic_id,
-      res.review.attempt.lesson_id
+      res.review.attempt.lesson_id,
+      user?.id,
+      attemptId
     );
     setCourseContext(ctx);
     setReview(res.review);
     setLoading(false);
-  }, [attemptId]);
+  }, [attemptId, user?.id]);
 
   useEffect(() => {
     void loadReview();

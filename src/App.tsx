@@ -6,6 +6,7 @@
 import { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider } from './hooks/AuthContext';
+import { OfflineSyncProvider } from './hooks/useOfflineSync';
 import { ThemeProvider } from './hooks/ThemeContext';
 import { useAuth } from './hooks/useAuth';
 import { AppShell } from './components/layout/AppShell';
@@ -71,6 +72,9 @@ const TestResultDetailPage = lazy(() =>
 const ProfilePage = lazy(() =>
   import('./pages/student/ProfilePage').then((m) => ({ default: m.ProfilePage }))
 );
+const OfflineLibraryPage = lazy(() =>
+  import('./pages/student/OfflineLibraryPage').then((m) => ({ default: m.OfflineLibraryPage }))
+);
 const AdminDashboardPage = lazy(() =>
   import('./pages/admin/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage }))
 );
@@ -133,33 +137,35 @@ export default function App() {
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
-          <PasswordRecoveryRedirect />
-          <AppShell>
-            <Suspense fallback={<LoadingState message="Loading page..." />}>
-              <Routes>
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/ministries" element={<MinistriesPage />} />
-                <Route path="/church" element={<MinistriesPage />} />
-                <Route path="/setup" element={<SetupPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/legal" element={<LegalDocumentPage />} />
-                <Route path="/legal/:docSlug" element={<LegalDocumentPage />} />
-                <Route path="/share" element={<ShareLandingPage />} />
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/signup" element={<SignupPage />} />
-                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-                <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <OfflineSyncProvider>
+            <PasswordRecoveryRedirect />
+            <AppShell>
+              <Suspense fallback={<LoadingState message="Loading page..." />}>
+                <Routes>
+                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/ministries" element={<MinistriesPage />} />
+                  <Route path="/church" element={<MinistriesPage />} />
+                  <Route path="/setup" element={<SetupPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/legal" element={<LegalDocumentPage />} />
+                  <Route path="/legal/:docSlug" element={<LegalDocumentPage />} />
+                  <Route path="/share" element={<ShareLandingPage />} />
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/signup" element={<SignupPage />} />
+                  <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                  <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-                <Route element={<ProtectedRoute />}>
-                  <Route path="/app" element={<HomePage />} />
-                  <Route path="/app/setup-exams" element={<ExamSetupPage />} />
-                  <Route path="/app/subjects" element={<SubjectsPage />} />
-                  <Route path="/app/subjects/:examSlug/:subjectSlug" element={<SubjectDetailPage />} />
-                  <Route path="/app/lessons/:lessonId" element={<LessonPage />} />
-                  <Route path="/app/tests/:testId" element={<TestTakePage />} />
-                  <Route path="/app/results" element={<ResultsPage />} />
-                  <Route path="/app/results/:attemptId" element={<TestResultDetailPage />} />
-                  <Route path="/app/profile" element={<ProfilePage />} />
+                  <Route element={<ProtectedRoute />}>
+                    <Route path="/app" element={<HomePage />} />
+                    <Route path="/app/setup-exams" element={<ExamSetupPage />} />
+                    <Route path="/app/subjects" element={<SubjectsPage />} />
+                    <Route path="/app/subjects/:examSlug/:subjectSlug" element={<SubjectDetailPage />} />
+                    <Route path="/app/lessons/:lessonId" element={<LessonPage />} />
+                    <Route path="/app/tests/:testId" element={<TestTakePage />} />
+                    <Route path="/app/results" element={<ResultsPage />} />
+                    <Route path="/app/results/:attemptId" element={<TestResultDetailPage />} />
+                    <Route path="/app/profile" element={<ProfilePage />} />
+                    <Route path="/app/offline" element={<OfflineLibraryPage />} />
 
                   <Route element={<AdminRoute />}>
                     <Route path="/admin" element={<AdminDashboardPage />} />
@@ -184,6 +190,7 @@ export default function App() {
               </Routes>
             </Suspense>
           </AppShell>
+          </OfflineSyncProvider>
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>

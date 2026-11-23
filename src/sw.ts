@@ -6,7 +6,7 @@ import {
   type PrecacheEntry,
 } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
-import { CacheFirst } from 'workbox-strategies';
+import { CacheFirst, StaleWhileRevalidate } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 
@@ -72,6 +72,41 @@ if (import.meta.env.PROD) {
     })
   );
 }
+
+registerRoute(
+  ({ url }) =>
+    url.origin === sw.location.origin &&
+    (url.pathname.startsWith('/src/assets/') || url.pathname.startsWith('/assets/')),
+  new StaleWhileRevalidate({
+    cacheName: 'phosters-local-media-cache',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 60,
+        maxAgeSeconds: 60 * 60 * 24 * 30,
+      }),
+      new CacheableResponsePlugin({
+        statuses: [0, 200],
+      }),
+    ],
+  })
+);
+
+registerRoute(
+  ({ request, url }) =>
+    request.method === 'GET' && url.hostname === 'raw.githubusercontent.com',
+  new CacheFirst({
+    cacheName: 'phosters-study-files-cache',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 40,
+        maxAgeSeconds: 60 * 60 * 24 * 30,
+      }),
+      new CacheableResponsePlugin({
+        statuses: [200],
+      }),
+    ],
+  })
+);
 
 registerRoute(
   /^https:\/\/fonts\.googleapis\.com\/.*/i,

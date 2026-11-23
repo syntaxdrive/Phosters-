@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, BookOpen, ChevronRight, PlayCircle, Settings2, Shield } from 'lucide-react';
+import { ArrowRight, BookOpen, ChevronRight, HardDrive, PlayCircle, Settings2, Shield } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { fetchStudentAnnouncements } from '../../services/announcementService';
 import { fetchStudentAttempts } from '../../services/cbtService';
 import {
@@ -9,6 +10,7 @@ import {
   fetchRecentLesson,
   fetchStudentEnrollments,
 } from '../../services/learningService';
+import { formatBytes } from '../../services/offlineSyncService';
 import type { AnnouncementFeedItem } from '../../types/announcement';
 import type { StudentAttemptSummary } from '../../types/cbt';
 import type { RecentLessonItem, StudentEnrolledExam } from '../../types/learning';
@@ -19,6 +21,7 @@ import { ErrorState, LoadingState } from '../../components/ui/States';
 
 export function HomePage() {
   const { user, profile } = useAuth();
+  const { summary, pendingCount, totalBytes } = useOfflineSync();
   const displayName = profile?.full_name || 'Student';
 
   const [enrollments, setEnrollments] = useState<StudentEnrolledExam[]>([]);
@@ -38,7 +41,7 @@ export function HomePage() {
       fetchStudentEnrollments(user.id),
       fetchRecentLesson(user.id),
       fetchStudentAttempts(user.id, 3),
-      fetchStudentAnnouncements(),
+      fetchStudentAnnouncements({ userId: user.id }),
     ]);
 
     if (enrollRes.error) {
@@ -53,7 +56,7 @@ export function HomePage() {
       new Set(loadedEnrollments.flatMap((e) => e.selectedSubjects.map((s) => s.id)))
     );
 
-    const countsRes = await fetchLessonCountsByExamSubject(examIds, subjectIds);
+    const countsRes = await fetchLessonCountsByExamSubject(examIds, subjectIds, user.id);
 
     setEnrollments(loadedEnrollments);
     setRecentLesson(recentRes.recentLesson);
@@ -134,6 +137,31 @@ export function HomePage() {
       )}
 
       <PushNotificationSettings variant="banner" />
+
+      <Card padding="md" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="h-9 w-9 rounded-lg bg-phosters-50 dark:bg-phosters-900/50 border border-phosters-200 dark:border-phosters-800 flex items-center justify-center text-phosters-700 dark:text-phosters-400 shrink-0">
+            <HardDrive className="h-4 w-4" aria-hidden="true" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+              Offline Study Library
+            </h2>
+            <p className="text-xs text-slate-600 dark:text-slate-400 tabular-nums">
+              {(summary?.savedLessons.length ?? 0) > 0 || (summary?.savedMaterials.length ?? 0) > 0
+                ? `${summary?.savedLessons.length ?? 0} saved lessons · ${summary?.savedMaterials.length ?? 0} study files · ${formatBytes(totalBytes)}`
+                : 'Save subjects or lessons while online to read notes, open PDFs, and take tests with zero data.'}
+              {pendingCount > 0 ? ` · ${pendingCount} pending sync` : ''}
+            </p>
+          </div>
+        </div>
+        <Link
+          to="/app/offline"
+          className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
+        >
+          Open Offline Study
+        </Link>
+      </Card>
 
       {announcements.length > 0 && <AnnouncementFeed items={announcements} />}
 

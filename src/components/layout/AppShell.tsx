@@ -4,6 +4,7 @@ import {
   Award,
   BookOpen,
   FileText,
+  HardDrive,
   Home,
   LogIn,
   LogOut,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import { LEGAL_CONTACT_EMAIL, LEGAL_DOCUMENTS } from '../../data/legalPolicies';
 import { useAuth } from '../../hooks/useAuth';
+import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { useTheme, type ThemeMode } from '../../hooks/useTheme';
 import { OfflineIndicator } from '../pwa/OfflineIndicator';
@@ -45,6 +47,7 @@ const themeChoices: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
 
 export function AppShell({ children }: AppShellProps) {
   const { user, profile, signOut, isConfigured } = useAuth();
+  const { pendingCount } = useOfflineSync();
   const { isInstalled } = usePWAInstall();
   const { theme, setTheme } = useTheme();
   const location = useLocation();
@@ -351,6 +354,27 @@ export function AppShell({ children }: AppShellProps) {
                         </NavLink>
                       );
                     })}
+                    <NavLink
+                      to="/app/offline"
+                      className={({ isActive }) =>
+                        [
+                          'flex items-center justify-between gap-3 px-3 min-h-[44px] rounded-lg text-sm font-medium transition-colors',
+                          isActive
+                            ? 'bg-phosters-50 dark:bg-phosters-900/50 text-phosters-800 dark:text-phosters-300 font-semibold'
+                            : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800',
+                        ].join(' ')
+                      }
+                    >
+                      <span className="flex items-center gap-3">
+                        <HardDrive className="h-4 w-4 shrink-0" aria-hidden="true" />
+                        <span>Offline Study</span>
+                      </span>
+                      {pendingCount > 0 && (
+                        <span className="text-xs font-semibold text-phosters-700 dark:text-phosters-400 tabular-nums">
+                          {pendingCount} queued
+                        </span>
+                      )}
+                    </NavLink>
                     <NavLink
                       to="/app/setup-exams"
                       className={({ isActive }) =>

@@ -1,4 +1,5 @@
 import type { MaterialFileType } from '../types/database';
+import { getOfflineMaterial, putOfflineMaterial, buildMaterialKey } from './offlineDb';
 
 const APPROVED_MATERIAL_HOSTS = new Set(['raw.githubusercontent.com']);
 const MAX_BLOB_DOWNLOAD_BYTES = 25 * 1024 * 1024; // 25 MB safety limit for mobile browser memory
@@ -76,19 +77,86 @@ export function extractFilenameFromUrl(rawUrl: string, fallbackTitle: string, fi
 }
 
 export type MaterialAccessResult = {
-  method: 'blob-download' | 'opened-direct';
+  method: 'offline-cache' | 'blob-download' | 'opened-direct';
   error?: string;
 };
 
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+}
+
 /**
- * Attempts a direct CORS fetch-to-Blob download for reasonably sized files so
- * mobile browsers save the file cleanly; falls back to opening the direct HTTPS
- * raw URL if CORS or file size prevents in-memory blob buffering.
+ * Downloads and stores a study material Blob inside IndexedDB for offline access.
+ */
+export async function saveMaterialForOffline(
+  userId: string,
+  rawUrl: string,
+  title: string,
+  fileType: MaterialFileType
+): Promise<{ sizeBytes: number; error: string | null }> {
+  const check = validateMaterialUrl(rawUrl);
+  if (!check.valid) {
+    return { sizeBytes: 0, error: check.error || 'Invalid material link.' };
+  }
+
+  const existing = await getOfflineMaterial(userId, rawUrl);
+  if (existing) {
+    return { sizeBytes: existing.sizeBytes, error: null };
+  }
+
+  try {
+    const response = await fetch(rawUrl, { method: 'GET', mode: 'cors' });
+    if (!response.ok) {
+      return {
+        sizeBytes: 0,
+        error: `Could not fetch "${title}" for offline storage (HTTP ${response.status}).`,
+      };
+    }
+
+    const blob = await response.blob();
+    if (blob.size > MAX_BLOB_DOWNLOAD_BYTES) {
+      return {
+        sizeBytes: 0,
+        error: `"${title}" is larger than 25 MB and cannot be saved inside browser offline storage.`,
+      };
+    }
+
+    await putOfflineMaterial({
+      key: buildMaterialKey(userId, rawUrl),
+      userId,
+      url: rawUrl,
+      title,
+      fileType,
+      blob,
+      sizeBytes: blob.size,
+      savedAt: Date.now(),
+    });
+
+    return { sizeBytes: blob.size, error: null };
+  } catch {
+    return {
+      sizeBytes: 0,
+      error: `Unable to cache "${title}" offline right now. Check your internet connection.`,
+    };
+  }
+}
+
+/**
+ * Serves from IndexedDB offline cache first if saved on device, otherwise performs
+ * a direct CORS fetch-to-Blob download (and caches it for future offline access).
  */
 export async function accessMaterialFile(
   rawUrl: string,
   title: string,
-  fileType: MaterialFileType
+  fileType: MaterialFileType,
+  options?: { userId?: string }
 ): Promise<MaterialAccessResult> {
   const check = validateMaterialUrl(rawUrl);
   if (!check.valid) {
@@ -96,6 +164,21 @@ export async function accessMaterialFile(
   }
 
   const filename = extractFilenameFromUrl(rawUrl, title, fileType);
+
+  if (options?.userId) {
+    const cached = await getOfflineMaterial(options.userId, rawUrl);
+    if (cached) {
+      triggerBlobDownload(cached.blob, filename);
+      return { method: 'offline-cache' };
+    }
+  }
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return {
+      method: 'opened-direct',
+      error: 'You are offline and this study file was not saved offline yet. Save the lesson while connected.',
+    };
+  }
 
   try {
     const response = await fetch(rawUrl, { method: 'GET', mode: 'cors' });
@@ -126,18 +209,22 @@ export async function accessMaterialFile(
       return { method: 'opened-direct' };
     }
 
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+    if (options?.userId) {
+      void putOfflineMaterial({
+        key: buildMaterialKey(options.userId, rawUrl),
+        userId: options.userId,
+        url: rawUrl,
+        title,
+        fileType,
+        blob,
+        sizeBytes: blob.size,
+        savedAt: Date.now(),
+      });
+    }
 
+    triggerBlobDownload(blob, filename);
     return { method: 'blob-download' };
   } catch {
-    // Fallback to direct anchor navigation without window.open (iframe-safe)
     triggerDirectAnchorOpen(rawUrl, filename);
     return { method: 'opened-direct' };
   }

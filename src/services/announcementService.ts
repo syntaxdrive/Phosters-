@@ -1,4 +1,10 @@
 import { isSafeExternalHttpUrl } from '../lib/materialLinks';
+import {
+  cacheAnnouncements,
+  getOfflineKv,
+  isLikelyNetworkError,
+  offlineKeys,
+} from '../lib/offlineDb';
 import { supabase } from '../lib/supabase';
 import type {
   AdminAnnouncementInput,
@@ -38,79 +44,106 @@ function buildAudienceLabel(
 }
 
 export async function fetchStudentAnnouncements(options?: {
+  userId?: string;
   examId?: string;
   subjectId?: string;
 }): Promise<{
   announcements: AnnouncementFeedItem[];
+  fromCache?: boolean;
   error: string | null;
 }> {
   if (!supabase) return { announcements: [], error: 'Supabase is not configured.' };
 
-  let query = supabase
-    .from('announcements')
-    .select(
-      'id, title, message, audience_type, exam_id, subject_id, is_pinned, is_published, created_by, created_at, updated_at'
-    )
-    .eq('is_published', true)
-    .order('is_pinned', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(20);
+  const cacheUserKey = options?.userId || 'anon';
+  const cacheKey = offlineKeys.announcements(
+    cacheUserKey,
+    options?.examId,
+    options?.subjectId
+  );
 
-  if (options?.examId && options?.subjectId) {
-    query = query
-      .eq('audience_type', 'exam_subject')
-      .eq('exam_id', options.examId)
-      .eq('subject_id', options.subjectId);
-  }
+  try {
+    let query = supabase
+      .from('announcements')
+      .select(
+        'id, title, message, audience_type, exam_id, subject_id, is_pinned, is_published, created_by, created_at, updated_at'
+      )
+      .eq('is_published', true)
+      .order('is_pinned', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(20);
 
-  const [annRes, examsRes, subjectsRes] = await Promise.all([
-    query,
-    supabase.from('exams').select('id, name'),
-    supabase.from('subjects').select('id, name'),
-  ]);
-
-  if (annRes.error) {
-    // Gracefully hide before migration 005 is applied
-    if (annRes.error.code === '42P01') return { announcements: [], error: null };
-    return { announcements: [], error: mapAnnouncementError(annRes.error) };
-  }
-
-  const rows = (annRes.data ?? []) as Announcement[];
-  if (rows.length === 0) {
-    return { announcements: [], error: null };
-  }
-
-  const announcementIds = rows.map((r) => r.id);
-  const linksRes = await supabase
-    .from('announcement_links')
-    .select('id, announcement_id, title, url, display_order')
-    .in('announcement_id', announcementIds)
-    .order('display_order', { ascending: true });
-
-  const linksByAnnouncement = new Map<string, AnnouncementLink[]>();
-  if (!linksRes.error && linksRes.data) {
-    for (const lnk of linksRes.data as AnnouncementLink[]) {
-      if (!isSafeExternalHttpUrl(lnk.url)) continue;
-      const list = linksByAnnouncement.get(lnk.announcement_id) ?? [];
-      list.push(lnk);
-      linksByAnnouncement.set(lnk.announcement_id, list);
+    if (options?.examId && options?.subjectId) {
+      query = query
+        .eq('audience_type', 'exam_subject')
+        .eq('exam_id', options.examId)
+        .eq('subject_id', options.subjectId);
     }
+
+    const [annRes, examsRes, subjectsRes] = await Promise.all([
+      query,
+      supabase.from('exams').select('id, name'),
+      supabase.from('subjects').select('id, name'),
+    ]);
+
+    if (annRes.error) {
+      if (isLikelyNetworkError(annRes.error)) {
+        const cached = await getOfflineKv<AnnouncementFeedItem[]>(cacheKey);
+        if (cached?.value) {
+          return { announcements: cached.value, fromCache: true, error: null };
+        }
+      }
+      // Gracefully hide before migration 005 is applied
+      if (annRes.error.code === '42P01') return { announcements: [], error: null };
+      return { announcements: [], error: mapAnnouncementError(annRes.error) };
+    }
+
+    const rows = (annRes.data ?? []) as Announcement[];
+    if (rows.length === 0) {
+      void cacheAnnouncements(cacheUserKey, [], options?.examId, options?.subjectId);
+      return { announcements: [], error: null };
+    }
+
+    const announcementIds = rows.map((r) => r.id);
+    const linksRes = await supabase
+      .from('announcement_links')
+      .select('id, announcement_id, title, url, display_order')
+      .in('announcement_id', announcementIds)
+      .order('display_order', { ascending: true });
+
+    const linksByAnnouncement = new Map<string, AnnouncementLink[]>();
+    if (!linksRes.error && linksRes.data) {
+      for (const lnk of linksRes.data as AnnouncementLink[]) {
+        if (!isSafeExternalHttpUrl(lnk.url)) continue;
+        const list = linksByAnnouncement.get(lnk.announcement_id) ?? [];
+        list.push(lnk);
+        linksByAnnouncement.set(lnk.announcement_id, list);
+      }
+    }
+
+    const examMap = new Map(
+      ((examsRes.data ?? []) as Array<Pick<Exam, 'id' | 'name'>>).map((e) => [e.id, e.name])
+    );
+    const subjectMap = new Map(
+      ((subjectsRes.data ?? []) as Array<Pick<Subject, 'id' | 'name'>>).map((s) => [s.id, s.name])
+    );
+
+    const items: AnnouncementFeedItem[] = rows.map((a) => ({
+      ...a,
+      audienceLabel: buildAudienceLabel(a, examMap, subjectMap),
+      links: linksByAnnouncement.get(a.id) ?? [],
+    }));
+
+    void cacheAnnouncements(cacheUserKey, items, options?.examId, options?.subjectId);
+    return { announcements: items, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      const cached = await getOfflineKv<AnnouncementFeedItem[]>(cacheKey);
+      if (cached?.value) {
+        return { announcements: cached.value, fromCache: true, error: null };
+      }
+    }
+    return { announcements: [], error: 'Unable to load announcements right now.' };
   }
-
-  const examMap = new Map(
-    ((examsRes.data ?? []) as Array<Pick<Exam, 'id' | 'name'>>).map((e) => [e.id, e.name])
-  );
-  const subjectMap = new Map(
-    ((subjectsRes.data ?? []) as Array<Pick<Subject, 'id' | 'name'>>).map((s) => [s.id, s.name])
-  );
-
-  const items: AnnouncementFeedItem[] = rows.map((a) => ({
-    ...a,
-    audienceLabel: buildAudienceLabel(a, examMap, subjectMap),
-    links: linksByAnnouncement.get(a.id) ?? [],
-  }));
-
-  return { announcements: items, error: null };
 }
 
 export async function fetchAdminAnnouncements(): Promise<{

@@ -1,3 +1,4 @@
+import { isDeviceOnline, isLikelyNetworkError } from '../lib/offlineDb';
 import { supabase } from '../lib/supabase';
 import type { EngagementTargetType, UserRole } from '../types/database';
 import type { EngagementStats, TopicCommentItem } from '../types/engagement';
@@ -23,6 +24,9 @@ function mapEngagementError(err: { code?: string; message?: string } | null): st
   if (err.code === '42501') {
     return 'Comments are currently disabled for this topic or you do not have permission.';
   }
+  if (isLikelyNetworkError(err)) {
+    return 'Connect to the internet to interact with likes and topic discussions.';
+  }
   return err.message || 'Unable to process this request right now.';
 }
 
@@ -38,68 +42,79 @@ export async function fetchEngagementStats(
   error: string | null;
 }> {
   const statsMap = new Map<string, EngagementStats>();
-  if (!supabase || targets.length === 0) {
+  if (!supabase || targets.length === 0 || !isDeviceOnline()) {
     return { statsMap, migrationRequired: false, error: null };
   }
 
-  const payload = targets.map((t) => ({
-    target_type: t.targetType,
-    target_key: t.targetKey,
-  }));
+  try {
+    const payload = targets.map((t) => ({
+      target_type: t.targetType,
+      target_key: t.targetKey,
+    }));
 
-  const { data, error } = await supabase.rpc('get_engagement_stats', {
-    p_targets: payload,
-  });
-
-  if (error) {
-    if (isMissingMigrationError(error)) {
-      return { statsMap, migrationRequired: true, error: null };
-    }
-    return { statsMap, migrationRequired: false, error: mapEngagementError(error) };
-  }
-
-  const rows = (Array.isArray(data) ? data : []) as Array<{
-    target_type: EngagementTargetType;
-    target_key: string;
-    likes_count: number;
-    liked_by_me: boolean;
-    views_count: number;
-    comments_count: number;
-  }>;
-
-  for (const row of rows) {
-    statsMap.set(`${row.target_type}:${row.target_key}`, {
-      targetType: row.target_type,
-      targetKey: row.target_key,
-      likesCount: Number(row.likes_count ?? 0),
-      likedByMe: Boolean(row.liked_by_me),
-      viewsCount: Number(row.views_count ?? 0),
-      commentsCount: Number(row.comments_count ?? 0),
+    const { data, error } = await supabase.rpc('get_engagement_stats', {
+      p_targets: payload,
     });
-  }
 
-  return { statsMap, migrationRequired: false, error: null };
+    if (error) {
+      if (isMissingMigrationError(error)) {
+        return { statsMap, migrationRequired: true, error: null };
+      }
+      if (isLikelyNetworkError(error)) {
+        return { statsMap, migrationRequired: false, error: null };
+      }
+      return { statsMap, migrationRequired: false, error: mapEngagementError(error) };
+    }
+
+    const rows = (Array.isArray(data) ? data : []) as Array<{
+      target_type: EngagementTargetType;
+      target_key: string;
+      likes_count: number;
+      liked_by_me: boolean;
+      views_count: number;
+      comments_count: number;
+    }>;
+
+    for (const row of rows) {
+      statsMap.set(`${row.target_type}:${row.target_key}`, {
+        targetType: row.target_type,
+        targetKey: row.target_key,
+        likesCount: Number(row.likes_count ?? 0),
+        likedByMe: Boolean(row.liked_by_me),
+        viewsCount: Number(row.views_count ?? 0),
+        commentsCount: Number(row.comments_count ?? 0),
+      });
+    }
+
+    return { statsMap, migrationRequired: false, error: null };
+  } catch {
+    return { statsMap, migrationRequired: false, error: null };
+  }
 }
 
 export async function recordContentView(
   targetType: EngagementTargetType,
   targetKey: string
 ): Promise<{ viewsCount: number | null; error: string | null }> {
-  if (!supabase || !targetKey) return { viewsCount: null, error: null };
+  if (!supabase || !targetKey || !isDeviceOnline()) return { viewsCount: null, error: null };
 
-  const { data, error } = await supabase.rpc('record_content_view', {
-    p_target_type: targetType,
-    p_target_key: targetKey,
-  });
+  try {
+    const { data, error } = await supabase.rpc('record_content_view', {
+      p_target_type: targetType,
+      p_target_key: targetKey,
+    });
 
-  if (error) {
-    if (isMissingMigrationError(error)) {
-      return { viewsCount: null, error: null };
+    if (error) {
+      if (isMissingMigrationError(error) || isLikelyNetworkError(error)) {
+        return { viewsCount: null, error: null };
+      }
+      return { viewsCount: null, error: mapEngagementError(error) };
     }
-    return { viewsCount: null, error: mapEngagementError(error) };
-  }
 
-  return { viewsCount: Number(data ?? 0), error: null };
+    return { viewsCount: Number(data ?? 0), error: null };
+  } catch {
+    return { viewsCount: null, error: null };
+  }
 }
 
 export async function toggleContentLike(
@@ -113,22 +128,29 @@ export async function toggleContentLike(
   if (!supabase) {
     return { liked: null, likesCount: null, error: 'Supabase is not configured.' };
   }
-
-  const { data, error } = await supabase.rpc('toggle_content_like', {
-    p_target_type: targetType,
-    p_target_key: targetKey,
-  });
-
-  if (error) {
-    return { liked: null, likesCount: null, error: mapEngagementError(error) };
+  if (!isDeviceOnline()) {
+    return { liked: null, likesCount: null, error: 'Connect to the internet to like lessons and topics.' };
   }
 
-  const result = (data ?? {}) as { liked?: boolean; likes_count?: number };
-  return {
-    liked: Boolean(result.liked),
-    likesCount: Number(result.likes_count ?? 0),
-    error: null,
-  };
+  try {
+    const { data, error } = await supabase.rpc('toggle_content_like', {
+      p_target_type: targetType,
+      p_target_key: targetKey,
+    });
+
+    if (error) {
+      return { liked: null, likesCount: null, error: mapEngagementError(error) };
+    }
+
+    const result = (data ?? {}) as { liked?: boolean; likes_count?: number };
+    return {
+      liked: Boolean(result.liked),
+      likesCount: Number(result.likes_count ?? 0),
+      error: null,
+    };
+  } catch (err) {
+    return { liked: null, likesCount: null, error: mapEngagementError(err as { message?: string }) };
+  }
 }
 
 export async function fetchTopicComments(topicId: string): Promise<{
@@ -139,45 +161,60 @@ export async function fetchTopicComments(topicId: string): Promise<{
   if (!supabase) {
     return { comments: [], migrationRequired: false, error: 'Supabase is not configured.' };
   }
-
-  const { data, error } = await supabase.rpc('get_topic_comments', {
-    p_topic_id: topicId,
-  });
-
-  if (error) {
-    if (isMissingMigrationError(error)) {
-      return { comments: [], migrationRequired: true, error: null };
-    }
-    return { comments: [], migrationRequired: false, error: mapEngagementError(error) };
+  if (!isDeviceOnline()) {
+    return {
+      comments: [],
+      migrationRequired: false,
+      error: 'Topic comments require an active internet connection.',
+    };
   }
 
-  const rows = (Array.isArray(data) ? data : []) as Array<{
-    id: string;
-    topic_id: string;
-    lesson_id: string | null;
-    user_id: string;
-    author_name: string;
-    author_role: string;
-    body: string;
-    created_at: string;
-    is_own: boolean;
-  }>;
+  try {
+    const { data, error } = await supabase.rpc('get_topic_comments', {
+      p_topic_id: topicId,
+    });
 
-  return {
-    comments: rows.map((r) => ({
-      id: r.id,
-      topic_id: r.topic_id,
-      lesson_id: r.lesson_id,
-      user_id: r.user_id,
-      author_name: r.author_name || 'Phosters Student',
-      author_role: (r.author_role === 'admin' ? 'admin' : 'student') as UserRole,
-      body: r.body,
-      created_at: r.created_at,
-      is_own: Boolean(r.is_own),
-    })),
-    migrationRequired: false,
-    error: null,
-  };
+    if (error) {
+      if (isMissingMigrationError(error)) {
+        return { comments: [], migrationRequired: true, error: null };
+      }
+      return { comments: [], migrationRequired: false, error: mapEngagementError(error) };
+    }
+
+    const rows = (Array.isArray(data) ? data : []) as Array<{
+      id: string;
+      topic_id: string;
+      lesson_id: string | null;
+      user_id: string;
+      author_name: string;
+      author_role: string;
+      body: string;
+      created_at: string;
+      is_own: boolean;
+    }>;
+
+    return {
+      comments: rows.map((r) => ({
+        id: r.id,
+        topic_id: r.topic_id,
+        lesson_id: r.lesson_id,
+        user_id: r.user_id,
+        author_name: r.author_name || 'Phosters Student',
+        author_role: (r.author_role === 'admin' ? 'admin' : 'student') as UserRole,
+        body: r.body,
+        created_at: r.created_at,
+        is_own: Boolean(r.is_own),
+      })),
+      migrationRequired: false,
+      error: null,
+    };
+  } catch (err) {
+    return {
+      comments: [],
+      migrationRequired: false,
+      error: mapEngagementError(err as { message?: string }),
+    };
+  }
 }
 
 export async function postTopicComment(input: {
@@ -187,6 +224,9 @@ export async function postTopicComment(input: {
   body: string;
 }): Promise<{ error: string | null }> {
   if (!supabase) return { error: 'Supabase is not configured.' };
+  if (!isDeviceOnline()) {
+    return { error: 'Connect to the internet to post a comment.' };
+  }
 
   const cleanBody = input.body.trim();
   if (!cleanBody) {
@@ -196,31 +236,42 @@ export async function postTopicComment(input: {
     return { error: 'Comments must be 1,000 characters or fewer.' };
   }
 
-  const { error } = await supabase.from('topic_comments').insert({
-    topic_id: input.topicId,
-    lesson_id: input.lessonId ?? null,
-    user_id: input.userId,
-    body: cleanBody,
-  });
+  try {
+    const { error } = await supabase.from('topic_comments').insert({
+      topic_id: input.topicId,
+      lesson_id: input.lessonId ?? null,
+      user_id: input.userId,
+      body: cleanBody,
+    });
 
-  if (error) {
-    return { error: mapEngagementError(error) };
+    if (error) {
+      return { error: mapEngagementError(error) };
+    }
+
+    return { error: null };
+  } catch (err) {
+    return { error: mapEngagementError(err as { message?: string }) };
   }
-
-  return { error: null };
 }
 
 export async function deleteTopicComment(commentId: string): Promise<{ error: string | null }> {
   if (!supabase) return { error: 'Supabase is not configured.' };
-
-  const { error } = await supabase
-    .from('topic_comments')
-    .delete()
-    .eq('id', commentId);
-
-  if (error) {
-    return { error: mapEngagementError(error) };
+  if (!isDeviceOnline()) {
+    return { error: 'Connect to the internet to delete comments.' };
   }
 
-  return { error: null };
+  try {
+    const { error } = await supabase
+      .from('topic_comments')
+      .delete()
+      .eq('id', commentId);
+
+    if (error) {
+      return { error: mapEngagementError(error) };
+    }
+
+    return { error: null };
+  } catch (err) {
+    return { error: mapEngagementError(err as { message?: string }) };
+  }
 }

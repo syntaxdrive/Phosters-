@@ -6,13 +6,16 @@ import {
   CheckCircle2,
   CheckSquare,
   Circle,
+  Download,
   ExternalLink,
   FileDown,
   Pin,
   PinOff,
   VideoOff,
+  WifiOff,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { accessMaterialFile, isSafeExternalHttpUrl, validateMaterialUrl } from '../../lib/materialLinks';
 import { getSafeYouTubeEmbedUrl } from '../../lib/youtube';
 import { fetchPublishedTestsForLesson } from '../../services/cbtService';
@@ -22,6 +25,10 @@ import {
   toggleContentLike,
 } from '../../services/engagementService';
 import { fetchLessonDetail, setLessonCompletion } from '../../services/learningService';
+import {
+  downloadLessonPackForOffline,
+  removeOfflineLesson,
+} from '../../services/offlineSyncService';
 import type { MaterialFileType, Test } from '../../types/database';
 import type { EngagementStats } from '../../types/engagement';
 import type { LessonDetailData } from '../../types/learning';
@@ -43,6 +50,7 @@ const fileTypeLabels: Record<MaterialFileType, string> = {
 export function LessonPage() {
   const { lessonId = '' } = useParams();
   const { user, profile, profileLoading } = useAuth();
+  const { isOnline, downloadedLessonIds, pendingActions, refreshVault } = useOfflineSync();
   const isAdmin = profile?.role === 'admin';
 
   const [detail, setDetail] = useState<LessonDetailData | null>(null);
@@ -52,6 +60,11 @@ export function LessonPage() {
 
   const [isStickyMobileVideo, setIsStickyMobileVideo] = useState(true);
   const [togglingComplete, setTogglingComplete] = useState(false);
+  const [savingOffline, setSavingOffline] = useState(false);
+  const [offlineFeedback, setOfflineFeedback] = useState<{
+    tone: 'success' | 'info' | 'error';
+    message: string;
+  } | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [lessonStats, setLessonStats] = useState<EngagementStats | null>(null);
   const [likingLesson, setLikingLesson] = useState(false);
@@ -81,7 +94,7 @@ export function LessonPage() {
     }
 
     const [testsRes, statsRes] = await Promise.all([
-      fetchPublishedTestsForLesson(res.data.lesson.id, res.data.topic.id),
+      fetchPublishedTestsForLesson(res.data.lesson.id, res.data.topic.id, user.id),
       fetchEngagementStats([
         { targetType: 'lesson', targetKey: res.data.lesson.id },
       ]),
@@ -143,16 +156,60 @@ export function LessonPage() {
     if (!user || !detail) return;
     const nextState = !detail.isCompleted;
     setTogglingComplete(true);
-    const { error: updateError } = await setLessonCompletion(
+    const { queuedOffline, error: updateError } = await setLessonCompletion(
       user.id,
       detail.lesson.id,
-      nextState
+      nextState,
+      detail.lesson.title
     );
     setTogglingComplete(false);
 
     if (!updateError) {
       setDetail((prev) => (prev ? { ...prev, isCompleted: nextState } : prev));
+      if (queuedOffline) {
+        setOfflineFeedback({
+          tone: 'info',
+          message: 'Saved completion status on this device. It will sync automatically once reconnected.',
+        });
+      }
     }
+  }
+
+  async function handleToggleOfflinePack() {
+    if (!user || !detail) return;
+    setOfflineFeedback(null);
+    const isSaved = downloadedLessonIds.has(detail.lesson.id);
+
+    setSavingOffline(true);
+    if (isSaved) {
+      await removeOfflineLesson(user.id, detail.lesson.id);
+      await refreshVault();
+      setSavingOffline(false);
+      setOfflineFeedback({
+        tone: 'info',
+        message: 'Removed this lesson from your offline study library.',
+      });
+      return;
+    }
+
+    const res = await downloadLessonPackForOffline(user.id, detail.lesson.id, {
+      allowDrafts: isAdmin,
+      includeMaterials: true,
+    });
+    await refreshVault();
+    setSavingOffline(false);
+
+    if (res.error) {
+      setOfflineFeedback({ tone: 'error', message: res.error });
+      return;
+    }
+
+    const detailsText = `Saved lesson notes${res.materialsSaved > 0 ? `, ${res.materialsSaved} study file(s)` : ''}${res.testsSaved > 0 ? `, and ${res.testsSaved} practice test(s)` : ''} for offline study.`;
+    setOfflineFeedback({
+      tone: res.warnings.length > 0 ? 'info' : 'success',
+      message:
+        res.warnings.length > 0 ? `${detailsText} Warning: ${res.warnings[0]}` : detailsText,
+    });
   }
 
   async function handleMaterialAccess(
@@ -163,7 +220,9 @@ export function LessonPage() {
   ) {
     setMaterialNotice(null);
     setDownloadingId(materialId);
-    const result = await accessMaterialFile(fileUrl, title, fileType);
+    const result = await accessMaterialFile(fileUrl, title, fileType, {
+      userId: user?.id,
+    });
     setDownloadingId(null);
 
     if (result.error) {
@@ -171,7 +230,12 @@ export function LessonPage() {
       return;
     }
 
-    if (result.method === 'opened-direct') {
+    if (result.method === 'offline-cache') {
+      setMaterialNotice({
+        tone: 'success',
+        message: `Opened "${title}" from offline device storage (0 MB mobile data used).`,
+      });
+    } else if (result.method === 'opened-direct') {
       setMaterialNotice({
         tone: 'info',
         message:
@@ -180,7 +244,7 @@ export function LessonPage() {
     } else {
       setMaterialNotice({
         tone: 'success',
-        message: `"${title}" download started.`,
+        message: `"${title}" downloaded and cached on this device for offline reading.`,
       });
     }
   }
@@ -224,6 +288,10 @@ export function LessonPage() {
 
   const embedUrl = getSafeYouTubeEmbedUrl(lesson.youtube_url);
   const safeLinks = links.filter((l) => isSafeExternalHttpUrl(l.url));
+  const isLessonSavedOffline = downloadedLessonIds.has(lesson.id);
+  const hasPendingCompletionSync = pendingActions.some(
+    (act) => act.kind === 'lesson_completion' && act.payload.lessonId === lesson.id
+  );
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -261,10 +329,20 @@ export function LessonPage() {
       <div
         className={[
           '-mx-4 sm:mx-0 bg-slate-950 sm:rounded-xl overflow-hidden border-b sm:border border-slate-200 dark:border-slate-800',
-          isStickyMobileVideo ? 'sticky top-0 z-20 md:static' : '',
+          isStickyMobileVideo && isOnline ? 'sticky top-0 z-20 md:static' : '',
         ].join(' ')}
       >
-        {embedUrl ? (
+        {!isOnline ? (
+          <div className="aspect-video w-full bg-slate-900 text-slate-200 flex flex-col items-center justify-center p-6 text-center">
+            <WifiOff className="h-8 w-8 text-amber-400" aria-hidden="true" />
+            <p className="mt-3 text-sm font-semibold text-white">
+              Offline Study Mode
+            </p>
+            <p className="mt-1 text-xs text-slate-300 max-w-md leading-relaxed">
+              Video streaming requires internet data, but your lesson notes, saved study PDFs, and attached practice tests below are ready offline.
+            </p>
+          </div>
+        ) : embedUrl ? (
           <div className="aspect-video w-full bg-black">
             <iframe
               src={embedUrl}
@@ -331,25 +409,49 @@ export function LessonPage() {
             )}
           </div>
 
-          <Button
-            variant={isCompleted ? 'secondary' : 'primary'}
-            onClick={handleToggleComplete}
-            loading={togglingComplete}
-            className="self-start shrink-0"
-          >
-            {isCompleted ? (
-              <>
-                <CheckCircle2 className="h-4 w-4 text-phosters-600 dark:text-phosters-400" aria-hidden="true" />
-                <span>Completed</span>
-              </>
-            ) : (
-              <>
-                <Circle className="h-4 w-4" aria-hidden="true" />
-                <span>Mark as Completed</span>
-              </>
-            )}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2 shrink-0 self-start">
+            <Button
+              variant="secondary"
+              loading={savingOffline}
+              disabled={!isOnline && !isLessonSavedOffline}
+              onClick={() => void handleToggleOfflinePack()}
+            >
+              {isLessonSavedOffline ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-phosters-600 dark:text-phosters-400" aria-hidden="true" />
+                  <span>Saved Offline</span>
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                  <span>Save Offline</span>
+                </>
+              )}
+            </Button>
+
+            <Button
+              variant={isCompleted ? 'secondary' : 'primary'}
+              onClick={handleToggleComplete}
+              loading={togglingComplete}
+            >
+              {isCompleted ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-phosters-600 dark:text-phosters-400" aria-hidden="true" />
+                  <span>Completed{hasPendingCompletionSync ? ' (Pending sync)' : ''}</span>
+                </>
+              ) : (
+                <>
+                  <Circle className="h-4 w-4" aria-hidden="true" />
+                  <span>
+                    Mark as Completed{hasPendingCompletionSync ? ' (Pending sync)' : ''}
+                  </span>
+                </>
+              )}
+            </Button>
+          </div>
         </div>
+
+        {offlineFeedback && <Alert tone={offlineFeedback.tone}>{offlineFeedback.message}</Alert>}
 
         <EngagementBar
           likesCount={lessonStats?.likesCount ?? 0}

@@ -5,11 +5,14 @@ import {
   CheckCircle2,
   CheckSquare,
   ChevronRight,
+  Download,
   MessageSquare,
   MessageSquareOff,
   PlayCircle,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { fetchStudentAnnouncements } from '../../services/announcementService';
 import { fetchPublishedTopicTests } from '../../services/cbtService';
 import {
@@ -19,6 +22,10 @@ import {
   toggleContentLike,
 } from '../../services/engagementService';
 import { fetchSubjectTopicsAndLessons } from '../../services/learningService';
+import {
+  downloadSubjectPackForOffline,
+  removeOfflineSubject,
+} from '../../services/offlineSyncService';
 import type { AnnouncementFeedItem } from '../../types/announcement';
 import type { EngagementTargetType, Exam, Subject, Test } from '../../types/database';
 import type { EngagementStats, SharePayload } from '../../types/engagement';
@@ -28,12 +35,19 @@ import { ShareDialog, buildCourseSharePayload } from '../../components/social/Sh
 import { TopicCommentsSection } from '../../components/social/TopicCommentsSection';
 import { AnnouncementFeed } from '../../components/student/AnnouncementFeed';
 import { Alert } from '../../components/ui/Alert';
+import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/States';
 
 export function SubjectDetailPage() {
   const { examSlug = '', subjectSlug = '' } = useParams();
   const { user } = useAuth();
+  const {
+    isOnline,
+    downloadedSubjectKeys,
+    downloadedLessonIds,
+    refreshVault,
+  } = useOfflineSync();
 
   const [exam, setExam] = useState<Exam | null>(null);
   const [subject, setSubject] = useState<Subject | null>(null);
@@ -46,6 +60,12 @@ export function SubjectDetailPage() {
   const [openCommentsTopicId, setOpenCommentsTopicId] = useState<string | null>(null);
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
   const [engagementError, setEngagementError] = useState<string | null>(null);
+  const [savingOffline, setSavingOffline] = useState(false);
+  const [offlineProgress, setOfflineProgress] = useState<string | null>(null);
+  const [offlineNotice, setOfflineNotice] = useState<{
+    tone: 'success' | 'error' | 'info';
+    message: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,11 +97,12 @@ export function SubjectDetailPage() {
         : [];
 
     const [testsRes, annRes, statsRes] = await Promise.all([
-      fetchPublishedTopicTests(topicIds),
+      fetchPublishedTopicTests(topicIds, user.id, { examSlug, subjectSlug }),
       res.hasAccess && res.exam && res.subject
         ? fetchStudentAnnouncements({
             examId: res.exam.id,
             subjectId: res.subject.id,
+            userId: user.id,
           })
         : Promise.resolve({ announcements: [], error: null }),
       fetchEngagementStats(engagementTargets),
@@ -171,6 +192,51 @@ export function SubjectDetailPage() {
     }
   }
 
+  async function handleSaveSubjectOffline() {
+    if (!user || !examSlug || !subjectSlug) return;
+    setOfflineNotice(null);
+    setSavingOffline(true);
+    setOfflineProgress('Preparing download...');
+
+    const res = await downloadSubjectPackForOffline(
+      user.id,
+      examSlug,
+      subjectSlug,
+      (done, total) => {
+        setOfflineProgress(`Saving ${done} of ${total}...`);
+      }
+    );
+
+    setSavingOffline(false);
+    setOfflineProgress(null);
+    await refreshVault();
+
+    if (res.error) {
+      setOfflineNotice({ tone: 'error', message: res.error });
+      return;
+    }
+
+    const summaryText = `Saved ${res.lessonsSaved} lessons, ${res.testsSaved} practice tests, and ${res.materialsSaved} study files for offline study.`;
+    setOfflineNotice({
+      tone: res.warnings.length > 0 ? 'info' : 'success',
+      message:
+        res.warnings.length > 0
+          ? `${summaryText} Some files could not be cached: ${res.warnings[0]}`
+          : summaryText,
+    });
+  }
+
+  async function handleRemoveSubjectOffline() {
+    if (!user || !examSlug || !subjectSlug) return;
+    setOfflineNotice(null);
+    await removeOfflineSubject(user.id, examSlug, subjectSlug);
+    await refreshVault();
+    setOfflineNotice({
+      tone: 'info',
+      message: 'Removed subject overview from your offline list.',
+    });
+  }
+
   const handleTopicCommentsCountChange = useCallback(
     (topicId: string, count: number) => {
       setStatsMap((prev) => {
@@ -227,6 +293,7 @@ export function SubjectDetailPage() {
   }
 
   const totalLessons = topics.reduce((sum, t) => sum + t.lessons.length, 0);
+  const isSubjectSavedOffline = downloadedSubjectKeys.has(`${examSlug}:${subjectSlug}`);
 
   return (
     <div className="space-y-6">
@@ -239,26 +306,60 @@ export function SubjectDetailPage() {
           <span>All Subjects</span>
         </Link>
 
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-x-2 text-xs font-medium text-phosters-700 dark:text-phosters-400">
-            <span>{exam?.name}</span>
-            <span aria-hidden="true">·</span>
-            <span className="tabular-nums">
-              {topics.length} {topics.length === 1 ? 'topic' : 'topics'}
-            </span>
-            <span aria-hidden="true">·</span>
-            <span className="tabular-nums">
-              {totalLessons} {totalLessons === 1 ? 'lesson' : 'lessons'}
-            </span>
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-x-2 text-xs font-medium text-phosters-700 dark:text-phosters-400">
+              <span>{exam?.name}</span>
+              <span aria-hidden="true">·</span>
+              <span className="tabular-nums">
+                {topics.length} {topics.length === 1 ? 'topic' : 'topics'}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span className="tabular-nums">
+                {totalLessons} {totalLessons === 1 ? 'lesson' : 'lessons'}
+              </span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+              {subject?.name}
+            </h1>
+            {subject?.description && (
+              <p className="text-sm text-slate-600 dark:text-slate-400 max-w-2xl leading-relaxed">
+                {subject.description}
+              </p>
+            )}
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-            {subject?.name}
-          </h1>
-          {subject?.description && (
-            <p className="text-sm text-slate-600 dark:text-slate-400 max-w-2xl leading-relaxed">
-              {subject.description}
-            </p>
-          )}
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0 self-start">
+            <Button
+              variant={isSubjectSavedOffline ? 'secondary' : 'primary'}
+              loading={savingOffline}
+              disabled={!isOnline && !isSubjectSavedOffline}
+              onClick={() => void handleSaveSubjectOffline()}
+            >
+              {isSubjectSavedOffline ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-phosters-600 dark:text-phosters-400" aria-hidden="true" />
+                  <span>{savingOffline && offlineProgress ? offlineProgress : 'Update Offline Pack'}</span>
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                  <span>{savingOffline && offlineProgress ? offlineProgress : 'Save Subject Offline'}</span>
+                </>
+              )}
+            </Button>
+            {isSubjectSavedOffline && !savingOffline && (
+              <button
+                type="button"
+                aria-label="Remove subject from offline list"
+                title="Remove subject from offline list"
+                onClick={() => void handleRemoveSubjectOffline()}
+                className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+          </div>
         </div>
 
         {exam && subject && (
@@ -291,6 +392,7 @@ export function SubjectDetailPage() {
         )}
       </div>
 
+      {offlineNotice && <Alert tone={offlineNotice.tone}>{offlineNotice.message}</Alert>}
       {engagementError && <Alert tone="error">{engagementError}</Alert>}
 
       {announcements.length > 0 && (
@@ -418,6 +520,14 @@ export function SubjectDetailPage() {
                                     <span aria-hidden="true">·</span>
                                     <span className="font-medium text-phosters-700 dark:text-phosters-400">
                                       Completed
+                                    </span>
+                                  </>
+                                )}
+                                {downloadedLessonIds.has(lesson.id) && (
+                                  <>
+                                    <span aria-hidden="true">·</span>
+                                    <span className="font-medium text-slate-600 dark:text-slate-300">
+                                      Saved offline
                                     </span>
                                   </>
                                 )}

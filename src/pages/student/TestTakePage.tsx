@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, CloudUpload } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 import {
   fetchTestForTaking,
   submitStudentTestAttempt,
@@ -14,6 +15,7 @@ import { ErrorState, LoadingState } from '../../components/ui/States';
 export function TestTakePage() {
   const { testId = '' } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [payload, setPayload] = useState<StudentTestPayload | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -22,12 +24,17 @@ export function TestTakePage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmUnanswered, setConfirmUnanswered] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [queuedOfflineState, setQueuedOfflineState] = useState<{
+    testTitle: string;
+    answeredCount: number;
+    totalQuestions: number;
+  } | null>(null);
 
   const loadTest = useCallback(async () => {
     if (!testId) return;
     setLoading(true);
     setError(null);
-    const res = await fetchTestForTaking(testId);
+    const res = await fetchTestForTaking(testId, user?.id);
     if (res.error || !res.payload) {
       setError(res.error || 'Could not load test.');
       setLoading(false);
@@ -35,7 +42,7 @@ export function TestTakePage() {
     }
     setPayload(res.payload);
     setLoading(false);
-  }, [testId]);
+  }, [testId, user?.id]);
 
   useEffect(() => {
     void loadTest();
@@ -51,8 +58,22 @@ export function TestTakePage() {
     if (!payload) return;
     setSubmitting(true);
     setSubmitError(null);
-    const res = await submitStudentTestAttempt(payload.test.id, answers);
+    const res = await submitStudentTestAttempt(payload.test.id, answers, {
+      studentId: user?.id,
+      testTitle: payload.test.title,
+      totalQuestions: payload.questions.length,
+    });
     setSubmitting(false);
+
+    if (res.queuedOffline) {
+      const answeredCount = payload.questions.filter((q) => Boolean(answers[q.id])).length;
+      setQueuedOfflineState({
+        testTitle: payload.test.title,
+        answeredCount,
+        totalQuestions: payload.questions.length,
+      });
+      return;
+    }
 
     if (res.error || !res.attemptId) {
       setSubmitError(res.error || 'Failed to submit test. Please try again.');
@@ -86,6 +107,44 @@ export function TestTakePage() {
             Back to Subjects
           </Link>
         </div>
+      </div>
+    );
+  }
+
+  if (queuedOfflineState) {
+    return (
+      <div className="max-w-xl mx-auto space-y-5">
+        <Card padding="lg" className="space-y-4">
+          <div className="h-11 w-11 rounded-xl bg-phosters-50 dark:bg-phosters-900/50 border border-phosters-200 dark:border-phosters-800 flex items-center justify-center text-phosters-700 dark:text-phosters-400">
+            <CloudUpload className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div className="space-y-1.5">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-slate-50">
+              Answers saved offline for grading
+            </h1>
+            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              Your {queuedOfflineState.answeredCount} of {queuedOfflineState.totalQuestions} answers for{' '}
+              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                {queuedOfflineState.testTitle}
+              </span>{' '}
+              are safely stored on this device. They will automatically upload and receive official grading as soon as your internet connection returns.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3 pt-1">
+            <Link
+              to="/app/offline"
+              className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg bg-phosters-600 text-white text-sm font-semibold hover:bg-phosters-700 transition-colors"
+            >
+              Open Offline Study Library
+            </Link>
+            <Link
+              to="/app/subjects"
+              className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              Browse Subjects
+            </Link>
+          </div>
+        </Card>
       </div>
     );
   }

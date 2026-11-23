@@ -1,3 +1,16 @@
+import {
+  cacheStudentAttempts,
+  cacheStudentTest,
+  enqueueOfflineAction,
+  getOfflineKv,
+  isDeviceOnline,
+  isLikelyNetworkError,
+  offlineKeys,
+  putOfflineKv,
+  type CachedLessonBundle,
+  type CachedReviewBundle,
+  type CachedSubjectBundle,
+} from '../lib/offlineDb';
 import { supabase } from '../lib/supabase';
 import type {
   AdminTestEditorInput,
@@ -26,6 +39,9 @@ function mapCbtError(err: { message?: string; code?: string } | null): string {
   if (err.code === '42501') {
     return 'You do not have permission for this test action.';
   }
+  if (isLikelyNetworkError(err)) {
+    return 'Network unavailable. Connect to the internet or use downloaded tests.';
+  }
   return err.message || 'Unable to process test request right now.';
 }
 
@@ -35,202 +51,468 @@ function mapCbtError(err: { message?: string; code?: string } | null): string {
 
 export async function fetchPublishedTestsForLesson(
   lessonId: string,
-  topicId: string
+  topicId: string,
+  studentId?: string
 ): Promise<{ tests: Test[]; error: string | null }> {
   if (!supabase) return { tests: [], error: 'Supabase is not configured.' };
 
-  const { data, error } = await supabase
-    .from('tests')
-    .select(
-      'id, title, description, topic_id, lesson_id, is_published, show_explanations_after_submission, created_at, updated_at'
-    )
-    .eq('is_published', true)
-    .or(`lesson_id.eq.${lessonId},and(topic_id.eq.${topicId},lesson_id.is.null)`)
-    .order('created_at', { ascending: true });
+  const readCache = async (): Promise<Test[] | null> => {
+    if (!studentId) return null;
+    const cached = await getOfflineKv<CachedLessonBundle>(offlineKeys.lesson(studentId, lessonId));
+    return cached?.value?.attachedTests ?? null;
+  };
 
-  if (error) {
-    // Gracefully handle before Phase 4 SQL migration is applied
-    if (error.code === '42P01') return { tests: [], error: null };
-    return { tests: [], error: mapCbtError(error) };
+  if (!isDeviceOnline()) {
+    const cached = await readCache();
+    return { tests: cached ?? [], error: null };
   }
 
-  return { tests: (data ?? []) as Test[], error: null };
+  try {
+    const { data, error } = await supabase
+      .from('tests')
+      .select(
+        'id, title, description, topic_id, lesson_id, is_published, show_explanations_after_submission, created_at, updated_at'
+      )
+      .eq('is_published', true)
+      .or(`lesson_id.eq.${lessonId},and(topic_id.eq.${topicId},lesson_id.is.null)`)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      if (isLikelyNetworkError(error)) {
+        const cached = await readCache();
+        if (cached) return { tests: cached, error: null };
+      }
+      // Gracefully handle before Phase 4 SQL migration is applied
+      if (error.code === '42P01') return { tests: [], error: null };
+      return { tests: [], error: mapCbtError(error) };
+    }
+
+    const tests = (data ?? []) as Test[];
+    if (studentId) {
+      const key = offlineKeys.lesson(studentId, lessonId);
+      const existing = await getOfflineKv<CachedLessonBundle>(key);
+      if (existing?.value) {
+        void putOfflineKv<CachedLessonBundle>({
+          ...existing,
+          value: {
+            ...existing.value,
+            attachedTests: tests,
+          },
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
+    return { tests, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      const cached = await readCache();
+      if (cached) return { tests: cached, error: null };
+    }
+    return { tests: [], error: 'Network error while loading lesson tests.' };
+  }
 }
 
 export async function fetchPublishedTopicTests(
-  topicIds: string[]
+  topicIds: string[],
+  studentId?: string,
+  subjectRef?: { examSlug: string; subjectSlug: string }
 ): Promise<{ testsByTopic: Map<string, Test[]>; error: string | null }> {
   const testsByTopic = new Map<string, Test[]>();
   if (!supabase || topicIds.length === 0) {
     return { testsByTopic, error: null };
   }
 
-  const { data, error } = await supabase
-    .from('tests')
-    .select(
-      'id, title, description, topic_id, lesson_id, is_published, show_explanations_after_submission, created_at, updated_at'
-    )
-    .eq('is_published', true)
-    .in('topic_id', topicIds)
-    .is('lesson_id', null)
-    .order('created_at', { ascending: true });
+  const readCache = async (): Promise<Map<string, Test[]> | null> => {
+    if (!studentId || !subjectRef) return null;
+    const cached = await getOfflineKv<CachedSubjectBundle>(
+      offlineKeys.subject(studentId, subjectRef.examSlug, subjectRef.subjectSlug)
+    );
+    if (!cached?.value?.testsByTopicEntries) return null;
+    return new Map<string, Test[]>(cached.value.testsByTopicEntries);
+  };
 
-  if (error) {
-    if (error.code === '42P01') return { testsByTopic, error: null };
-    return { testsByTopic, error: mapCbtError(error) };
+  if (!isDeviceOnline()) {
+    const cached = await readCache();
+    return { testsByTopic: cached ?? testsByTopic, error: null };
   }
 
-  for (const t of (data ?? []) as Test[]) {
-    if (!t.topic_id) continue;
-    const list = testsByTopic.get(t.topic_id) ?? [];
-    list.push(t);
-    testsByTopic.set(t.topic_id, list);
-  }
+  try {
+    const { data, error } = await supabase
+      .from('tests')
+      .select(
+        'id, title, description, topic_id, lesson_id, is_published, show_explanations_after_submission, created_at, updated_at'
+      )
+      .eq('is_published', true)
+      .in('topic_id', topicIds)
+      .is('lesson_id', null)
+      .order('created_at', { ascending: true });
 
-  return { testsByTopic, error: null };
+    if (error) {
+      if (isLikelyNetworkError(error)) {
+        const cached = await readCache();
+        if (cached) return { testsByTopic: cached, error: null };
+      }
+      if (error.code === '42P01') return { testsByTopic, error: null };
+      return { testsByTopic, error: mapCbtError(error) };
+    }
+
+    for (const t of (data ?? []) as Test[]) {
+      if (!t.topic_id) continue;
+      const list = testsByTopic.get(t.topic_id) ?? [];
+      list.push(t);
+      testsByTopic.set(t.topic_id, list);
+    }
+
+    if (studentId && subjectRef) {
+      const key = offlineKeys.subject(studentId, subjectRef.examSlug, subjectRef.subjectSlug);
+      const existing = await getOfflineKv<CachedSubjectBundle>(key);
+      if (existing?.value) {
+        void putOfflineKv<CachedSubjectBundle>({
+          ...existing,
+          value: {
+            ...existing.value,
+            testsByTopicEntries: Array.from(testsByTopic.entries()),
+          },
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
+    return { testsByTopic, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      const cached = await readCache();
+      if (cached) return { testsByTopic: cached, error: null };
+    }
+    return { testsByTopic, error: 'Network error while loading topic tests.' };
+  }
 }
 
 export async function fetchTestForTaking(
-  testId: string
-): Promise<{ payload: StudentTestPayload | null; error: string | null }> {
+  testId: string,
+  studentId?: string
+): Promise<{ payload: StudentTestPayload | null; fromCache?: boolean; error: string | null }> {
   if (!supabase) return { payload: null, error: 'Supabase is not configured.' };
 
-  const { data, error } = await supabase.rpc('get_published_test_for_student', {
-    p_test_id: testId,
-  });
+  const readCache = async (): Promise<StudentTestPayload | null> => {
+    if (!studentId) return null;
+    const cached = await getOfflineKv<StudentTestPayload>(offlineKeys.test(studentId, testId));
+    return cached?.value ?? null;
+  };
 
-  if (error) {
-    return { payload: null, error: mapCbtError(error) };
+  if (!isDeviceOnline()) {
+    const cached = await readCache();
+    if (cached) return { payload: cached, fromCache: true, error: null };
+    return {
+      payload: null,
+      error: 'You are offline and this practice test has not been saved for offline study yet.',
+    };
   }
 
-  return { payload: data as StudentTestPayload, error: null };
+  try {
+    const { data, error } = await supabase.rpc('get_published_test_for_student', {
+      p_test_id: testId,
+    });
+
+    if (error) {
+      if (isLikelyNetworkError(error)) {
+        const cached = await readCache();
+        if (cached) return { payload: cached, fromCache: true, error: null };
+      }
+      return { payload: null, error: mapCbtError(error) };
+    }
+
+    const payload = data as StudentTestPayload;
+    if (studentId && payload?.test?.id) {
+      void cacheStudentTest(studentId, payload, false);
+    }
+
+    return { payload, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      const cached = await readCache();
+      if (cached) return { payload: cached, fromCache: true, error: null };
+    }
+    return { payload: null, error: 'Network error while loading test questions.' };
+  }
 }
 
 export async function submitStudentTestAttempt(
   testId: string,
-  answers: Record<string, string>
-): Promise<{ attemptId: string | null; error: string | null }> {
+  answers: Record<string, string>,
+  offlineMeta?: {
+    studentId?: string;
+    testTitle?: string;
+    totalQuestions?: number;
+  }
+): Promise<{ attemptId: string | null; queuedOffline?: boolean; error: string | null }> {
   if (!supabase) return { attemptId: null, error: 'Supabase is not configured.' };
 
-  const { data, error } = await supabase.rpc('submit_test_attempt', {
-    p_test_id: testId,
-    p_answers: answers,
-  });
+  const queueSubmission = async (): Promise<{
+    attemptId: string | null;
+    queuedOffline?: boolean;
+    error: string | null;
+  }> => {
+    if (!offlineMeta?.studentId) {
+      return {
+        attemptId: null,
+        error: 'You are offline. Reconnect to submit your test answers.',
+      };
+    }
 
-  if (error) {
-    return { attemptId: null, error: mapCbtError(error) };
+    const answeredCount = Object.keys(answers).filter((k) => Boolean(answers[k])).length;
+    await enqueueOfflineAction({
+      id: `ts:${offlineMeta.studentId}:${testId}:${Date.now()}`,
+      userId: offlineMeta.studentId,
+      kind: 'test_submission',
+      createdAt: Date.now(),
+      payload: {
+        testId,
+        testTitle: offlineMeta.testTitle ?? 'Practice Test',
+        answers,
+        answeredCount,
+        totalQuestions: offlineMeta.totalQuestions ?? answeredCount,
+      },
+    });
+    return { attemptId: null, queuedOffline: true, error: null };
+  };
+
+  if (!isDeviceOnline()) {
+    return queueSubmission();
   }
 
-  return { attemptId: data as string, error: null };
+  try {
+    const { data, error } = await supabase.rpc('submit_test_attempt', {
+      p_test_id: testId,
+      p_answers: answers,
+    });
+
+    if (error) {
+      if (isLikelyNetworkError(error)) {
+        return queueSubmission();
+      }
+      return { attemptId: null, error: mapCbtError(error) };
+    }
+
+    return { attemptId: data as string, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      return queueSubmission();
+    }
+    return { attemptId: null, error: 'Failed to submit test. Please try again.' };
+  }
 }
 
 export async function fetchStudentAttempts(
   studentId: string,
   limit = 30
-): Promise<{ attempts: StudentAttemptSummary[]; error: string | null }> {
+): Promise<{ attempts: StudentAttemptSummary[]; fromCache?: boolean; error: string | null }> {
   if (!supabase) return { attempts: [], error: 'Supabase is not configured.' };
 
-  const attemptsRes = await supabase
-    .from('test_attempts')
-    .select('id, test_id, score, total_points, percentage, submitted_at')
-    .eq('student_id', studentId)
-    .order('submitted_at', { ascending: false })
-    .limit(limit);
+  const readCache = async (): Promise<StudentAttemptSummary[] | null> => {
+    const cached = await getOfflineKv<StudentAttemptSummary[]>(offlineKeys.attempts(studentId));
+    return cached?.value ?? null;
+  };
 
-  if (attemptsRes.error) {
-    if (attemptsRes.error.code === '42P01') return { attempts: [], error: null };
-    return { attempts: [], error: mapCbtError(attemptsRes.error) };
+  if (!isDeviceOnline()) {
+    const cached = await readCache();
+    if (cached) return { attempts: cached.slice(0, limit), fromCache: true, error: null };
+    return { attempts: [], fromCache: true, error: null };
   }
 
-  const rows = (attemptsRes.data ?? []) as Array<
-    Pick<TestAttempt, 'id' | 'test_id' | 'score' | 'total_points' | 'percentage' | 'submitted_at'>
-  >;
-  if (rows.length === 0) return { attempts: [], error: null };
+  try {
+    const attemptsRes = await supabase
+      .from('test_attempts')
+      .select('id, test_id, score, total_points, percentage, submitted_at')
+      .eq('student_id', studentId)
+      .order('submitted_at', { ascending: false })
+      .limit(limit);
 
-  const testIds = Array.from(new Set(rows.map((r) => r.test_id)));
-  const testsRes = await supabase
-    .from('tests')
-    .select('id, title')
-    .in('id', testIds);
-
-  const testTitleMap = new Map<string, string>();
-  if (!testsRes.error && testsRes.data) {
-    for (const t of testsRes.data as Array<{ id: string; title: string }>) {
-      testTitleMap.set(t.id, t.title);
+    if (attemptsRes.error) {
+      if (isLikelyNetworkError(attemptsRes.error)) {
+        const cached = await readCache();
+        if (cached) return { attempts: cached.slice(0, limit), fromCache: true, error: null };
+      }
+      if (attemptsRes.error.code === '42P01') return { attempts: [], error: null };
+      return { attempts: [], error: mapCbtError(attemptsRes.error) };
     }
+
+    const rows = (attemptsRes.data ?? []) as Array<
+      Pick<TestAttempt, 'id' | 'test_id' | 'score' | 'total_points' | 'percentage' | 'submitted_at'>
+    >;
+    if (rows.length === 0) {
+      void cacheStudentAttempts(studentId, []);
+      return { attempts: [], error: null };
+    }
+
+    const testIds = Array.from(new Set(rows.map((r) => r.test_id)));
+    const testsRes = await supabase
+      .from('tests')
+      .select('id, title')
+      .in('id', testIds);
+
+    const testTitleMap = new Map<string, string>();
+    if (!testsRes.error && testsRes.data) {
+      for (const t of testsRes.data as Array<{ id: string; title: string }>) {
+        testTitleMap.set(t.id, t.title);
+      }
+    }
+
+    const attempts: StudentAttemptSummary[] = rows.map((r) => ({
+      id: r.id,
+      test_id: r.test_id,
+      test_title: testTitleMap.get(r.test_id) ?? 'Phosters Test',
+      score: r.score,
+      total_points: r.total_points,
+      percentage: Number(r.percentage),
+      submitted_at: r.submitted_at,
+    }));
+
+    void cacheStudentAttempts(studentId, attempts);
+    return { attempts, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      const cached = await readCache();
+      if (cached) return { attempts: cached.slice(0, limit), fromCache: true, error: null };
+    }
+    return { attempts: [], error: 'Network error while loading test attempts.' };
   }
-
-  const attempts: StudentAttemptSummary[] = rows.map((r) => ({
-    id: r.id,
-    test_id: r.test_id,
-    test_title: testTitleMap.get(r.test_id) ?? 'Phosters Test',
-    score: r.score,
-    total_points: r.total_points,
-    percentage: Number(r.percentage),
-    submitted_at: r.submitted_at,
-  }));
-
-  return { attempts, error: null };
 }
 
 export async function fetchAttemptReview(
-  attemptId: string
-): Promise<{ review: AttemptReviewPayload | null; error: string | null }> {
+  attemptId: string,
+  studentId?: string
+): Promise<{ review: AttemptReviewPayload | null; fromCache?: boolean; error: string | null }> {
   if (!supabase) return { review: null, error: 'Supabase is not configured.' };
 
-  const { data, error } = await supabase.rpc('get_test_attempt_review', {
-    p_attempt_id: attemptId,
-  });
+  const readCache = async (): Promise<AttemptReviewPayload | null> => {
+    if (!studentId) return null;
+    const cached = await getOfflineKv<CachedReviewBundle>(offlineKeys.review(studentId, attemptId));
+    return cached?.value?.review ?? null;
+  };
 
-  if (error) {
-    return { review: null, error: mapCbtError(error) };
+  if (!isDeviceOnline()) {
+    const cached = await readCache();
+    if (cached) return { review: cached, fromCache: true, error: null };
+    return {
+      review: null,
+      error: 'You are offline and this test review was not opened online on this device yet.',
+    };
   }
 
-  return { review: data as AttemptReviewPayload, error: null };
+  try {
+    const { data, error } = await supabase.rpc('get_test_attempt_review', {
+      p_attempt_id: attemptId,
+    });
+
+    if (error) {
+      if (isLikelyNetworkError(error)) {
+        const cached = await readCache();
+        if (cached) return { review: cached, fromCache: true, error: null };
+      }
+      return { review: null, error: mapCbtError(error) };
+    }
+
+    const review = data as AttemptReviewPayload;
+    if (studentId && review) {
+      const existing = await getOfflineKv<CachedReviewBundle>(offlineKeys.review(studentId, attemptId));
+      void putOfflineKv<CachedReviewBundle>({
+        key: offlineKeys.review(studentId, attemptId),
+        userId: studentId,
+        category: 'review',
+        value: {
+          review,
+          courseContext: existing?.value?.courseContext ?? { examName: null, subjectName: null },
+        },
+        updatedAt: Date.now(),
+      });
+    }
+
+    return { review, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      const cached = await readCache();
+      if (cached) return { review: cached, fromCache: true, error: null };
+    }
+    return { review: null, error: 'Network error while loading test result.' };
+  }
 }
 
 export async function fetchTestCourseContext(
   topicId: string | null,
-  lessonId: string | null
+  lessonId: string | null,
+  studentId?: string,
+  attemptId?: string
 ): Promise<{
   examName: string | null;
   subjectName: string | null;
 }> {
   if (!supabase) return { examName: null, subjectName: null };
 
-  let resolvedTopicId = topicId;
-  if (!resolvedTopicId && lessonId) {
-    const lessonRes = await supabase
-      .from('lessons')
-      .select('topic_id')
-      .eq('id', lessonId)
-      .maybeSingle();
-    resolvedTopicId = lessonRes.data?.topic_id ?? null;
-  }
-
-  if (!resolvedTopicId) {
-    return { examName: null, subjectName: null };
-  }
-
-  const topicRes = await supabase
-    .from('topics')
-    .select('exam_id, subject_id')
-    .eq('id', resolvedTopicId)
-    .maybeSingle();
-
-  if (!topicRes.data) {
-    return { examName: null, subjectName: null };
-  }
-
-  const [examRes, subjectRes] = await Promise.all([
-    supabase.from('exams').select('name').eq('id', topicRes.data.exam_id).maybeSingle(),
-    supabase.from('subjects').select('name').eq('id', topicRes.data.subject_id).maybeSingle(),
-  ]);
-
-  return {
-    examName: examRes.data?.name ?? null,
-    subjectName: subjectRes.data?.name ?? null,
+  const readCache = async () => {
+    if (!studentId || !attemptId) return null;
+    const cached = await getOfflineKv<CachedReviewBundle>(offlineKeys.review(studentId, attemptId));
+    return cached?.value?.courseContext ?? null;
   };
+
+  if (!isDeviceOnline()) {
+    return (await readCache()) ?? { examName: null, subjectName: null };
+  }
+
+  try {
+    let resolvedTopicId = topicId;
+    if (!resolvedTopicId && lessonId) {
+      const lessonRes = await supabase
+        .from('lessons')
+        .select('topic_id')
+        .eq('id', lessonId)
+        .maybeSingle();
+      resolvedTopicId = lessonRes.data?.topic_id ?? null;
+    }
+
+    if (!resolvedTopicId) {
+      return { examName: null, subjectName: null };
+    }
+
+    const topicRes = await supabase
+      .from('topics')
+      .select('exam_id, subject_id')
+      .eq('id', resolvedTopicId)
+      .maybeSingle();
+
+    if (!topicRes.data) {
+      return { examName: null, subjectName: null };
+    }
+
+    const [examRes, subjectRes] = await Promise.all([
+      supabase.from('exams').select('name').eq('id', topicRes.data.exam_id).maybeSingle(),
+      supabase.from('subjects').select('name').eq('id', topicRes.data.subject_id).maybeSingle(),
+    ]);
+
+    const ctx = {
+      examName: examRes.data?.name ?? null,
+      subjectName: subjectRes.data?.name ?? null,
+    };
+
+    if (studentId && attemptId) {
+      const existing = await getOfflineKv<CachedReviewBundle>(offlineKeys.review(studentId, attemptId));
+      if (existing?.value) {
+        void putOfflineKv<CachedReviewBundle>({
+          ...existing,
+          value: {
+            ...existing.value,
+            courseContext: ctx,
+          },
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
+    return ctx;
+  } catch {
+    return (await readCache()) ?? { examName: null, subjectName: null };
+  }
 }
 
 // ============================================================================

@@ -1,3 +1,15 @@
+import {
+  cacheRecentLesson,
+  enqueueOfflineAction,
+  getOfflineKv,
+  isDeviceOnline,
+  isLikelyNetworkError,
+  listOfflineSyncQueue,
+  offlineKeys,
+  putOfflineKv,
+  type CachedLessonBundle,
+  type CachedSubjectBundle,
+} from '../lib/offlineDb';
 import { supabase } from '../lib/supabase';
 import type {
   Exam,
@@ -102,83 +114,126 @@ export async function fetchActiveExamsWithSubjects(): Promise<{
 
 export async function fetchStudentEnrollments(studentId: string): Promise<{
   enrollments: StudentEnrolledExam[];
+  fromCache?: boolean;
   error: string | null;
 }> {
   if (!supabase) {
     return { enrollments: [], error: 'Supabase is not configured.' };
   }
 
-  const [profilesRes, examsRes, subjectsRes] = await Promise.all([
-    supabase
-      .from('student_exam_profiles')
-      .select('id, student_id, exam_id, intended_course, institution, created_at, updated_at')
-      .eq('student_id', studentId)
-      .order('created_at', { ascending: true }),
-    supabase
-      .from('exams')
-      .select('id, name, slug, description, is_active, created_at')
-      .eq('is_active', true),
-    supabase
-      .from('subjects')
-      .select('id, name, slug, description, is_active, created_at')
-      .eq('is_active', true),
-  ]);
+  const readCache = async () => {
+    const cached = await getOfflineKv<StudentEnrolledExam[]>(offlineKeys.enrollments(studentId));
+    return cached?.value ?? null;
+  };
 
-  if (profilesRes.error) return { enrollments: [], error: mapDatabaseError(profilesRes.error) };
-  if (examsRes.error) return { enrollments: [], error: mapDatabaseError(examsRes.error) };
-  if (subjectsRes.error) return { enrollments: [], error: mapDatabaseError(subjectsRes.error) };
-
-  const profiles = (profilesRes.data ?? []) as StudentExamProfile[];
-  if (profiles.length === 0) {
-    return { enrollments: [], error: null };
+  if (!isDeviceOnline()) {
+    const cached = await readCache();
+    if (cached) return { enrollments: cached, fromCache: true, error: null };
   }
 
-  const profileIds = profiles.map((p) => p.id);
-  const selectedRes = await supabase
-    .from('student_exam_subjects')
-    .select('id, student_exam_profile_id, subject_id, created_at')
-    .in('student_exam_profile_id', profileIds);
+  try {
+    const [profilesRes, examsRes, subjectsRes] = await Promise.all([
+      supabase
+        .from('student_exam_profiles')
+        .select('id, student_id, exam_id, intended_course, institution, created_at, updated_at')
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('exams')
+        .select('id, name, slug, description, is_active, created_at')
+        .eq('is_active', true),
+      supabase
+        .from('subjects')
+        .select('id, name, slug, description, is_active, created_at')
+        .eq('is_active', true),
+    ]);
 
-  if (selectedRes.error) {
-    return { enrollments: [], error: mapDatabaseError(selectedRes.error) };
-  }
+    const firstErr = profilesRes.error || examsRes.error || subjectsRes.error;
+    if (firstErr) {
+      if (isLikelyNetworkError(firstErr)) {
+        const cached = await readCache();
+        if (cached) return { enrollments: cached, fromCache: true, error: null };
+      }
+      return { enrollments: [], error: mapDatabaseError(firstErr) };
+    }
 
-  const examMap = new Map<string, Exam>();
-  for (const e of (examsRes.data ?? []) as Exam[]) {
-    examMap.set(e.id, e);
-  }
+    const profiles = (profilesRes.data ?? []) as StudentExamProfile[];
+    if (profiles.length === 0) {
+      void putOfflineKv({
+        key: offlineKeys.enrollments(studentId),
+        userId: studentId,
+        category: 'enrollments',
+        value: [],
+        updatedAt: Date.now(),
+      });
+      return { enrollments: [], error: null };
+    }
 
-  const subjectMap = new Map<string, Subject>();
-  for (const s of (subjectsRes.data ?? []) as Subject[]) {
-    subjectMap.set(s.id, s);
-  }
+    const profileIds = profiles.map((p) => p.id);
+    const selectedRes = await supabase
+      .from('student_exam_subjects')
+      .select('id, student_exam_profile_id, subject_id, created_at')
+      .in('student_exam_profile_id', profileIds);
 
-  const subjectsByProfile = new Map<string, Subject[]>();
-  for (const row of (selectedRes.data ?? []) as StudentExamSubject[]) {
-    const subj = subjectMap.get(row.subject_id);
-    if (!subj) continue;
-    const list = subjectsByProfile.get(row.student_exam_profile_id) ?? [];
-    list.push(subj);
-    subjectsByProfile.set(row.student_exam_profile_id, list);
-  }
+    if (selectedRes.error) {
+      if (isLikelyNetworkError(selectedRes.error)) {
+        const cached = await readCache();
+        if (cached) return { enrollments: cached, fromCache: true, error: null };
+      }
+      return { enrollments: [], error: mapDatabaseError(selectedRes.error) };
+    }
 
-  const enrollments: StudentEnrolledExam[] = [];
-  for (const p of profiles) {
-    const exam = examMap.get(p.exam_id);
-    if (!exam) continue;
-    const selectedSubjects = (subjectsByProfile.get(p.id) ?? []).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
-    enrollments.push({
-      profileId: p.id,
-      exam,
-      intendedCourse: p.intended_course,
-      institution: p.institution,
-      selectedSubjects,
+    const examMap = new Map<string, Exam>();
+    for (const e of (examsRes.data ?? []) as Exam[]) {
+      examMap.set(e.id, e);
+    }
+
+    const subjectMap = new Map<string, Subject>();
+    for (const s of (subjectsRes.data ?? []) as Subject[]) {
+      subjectMap.set(s.id, s);
+    }
+
+    const subjectsByProfile = new Map<string, Subject[]>();
+    for (const row of (selectedRes.data ?? []) as StudentExamSubject[]) {
+      const subj = subjectMap.get(row.subject_id);
+      if (!subj) continue;
+      const list = subjectsByProfile.get(row.student_exam_profile_id) ?? [];
+      list.push(subj);
+      subjectsByProfile.set(row.student_exam_profile_id, list);
+    }
+
+    const enrollments: StudentEnrolledExam[] = [];
+    for (const p of profiles) {
+      const exam = examMap.get(p.exam_id);
+      if (!exam) continue;
+      const selectedSubjects = (subjectsByProfile.get(p.id) ?? []).sort((a, b) =>
+        a.name.localeCompare(b.name)
+      );
+      enrollments.push({
+        profileId: p.id,
+        exam,
+        intendedCourse: p.intended_course,
+        institution: p.institution,
+        selectedSubjects,
+      });
+    }
+
+    void putOfflineKv({
+      key: offlineKeys.enrollments(studentId),
+      userId: studentId,
+      category: 'enrollments',
+      value: enrollments,
+      updatedAt: Date.now(),
     });
-  }
 
-  return { enrollments, error: null };
+    return { enrollments, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      const cached = await readCache();
+      if (cached) return { enrollments: cached, fromCache: true, error: null };
+    }
+    return { enrollments: [], error: 'Network error while loading enrollments.' };
+  }
 }
 
 export async function saveStudentExamSelections(
@@ -305,53 +360,100 @@ export async function saveStudentExamSelections(
 
 export async function fetchLessonCountsByExamSubject(
   examIds: string[],
-  subjectIds: string[]
+  subjectIds: string[],
+  studentId?: string
 ): Promise<{ counts: Map<string, number>; error: string | null }> {
   const counts = new Map<string, number>();
   if (!supabase || examIds.length === 0 || subjectIds.length === 0) {
     return { counts, error: null };
   }
 
-  const topicsRes = await supabase
-    .from('topics')
-    .select('id, exam_id, subject_id')
-    .in('exam_id', examIds)
-    .in('subject_id', subjectIds)
-    .eq('is_published', true);
+  const readCache = async () => {
+    if (!studentId) return null;
+    const cached = await getOfflineKv<Array<[string, number]>>(offlineKeys.lessonCounts(studentId));
+    return cached?.value ? new Map<string, number>(cached.value) : null;
+  };
 
-  if (topicsRes.error) {
-    return { counts, error: mapDatabaseError(topicsRes.error) };
+  if (!isDeviceOnline()) {
+    const cached = await readCache();
+    if (cached) return { counts: cached, error: null };
   }
 
-  const topics = (topicsRes.data ?? []) as Array<{ id: string; exam_id: string; subject_id: string }>;
-  if (topics.length === 0) {
+  try {
+    const topicsRes = await supabase
+      .from('topics')
+      .select('id, exam_id, subject_id')
+      .in('exam_id', examIds)
+      .in('subject_id', subjectIds)
+      .eq('is_published', true);
+
+    if (topicsRes.error) {
+      if (isLikelyNetworkError(topicsRes.error)) {
+        const cached = await readCache();
+        if (cached) return { counts: cached, error: null };
+      }
+      return { counts, error: mapDatabaseError(topicsRes.error) };
+    }
+
+    const topics = (topicsRes.data ?? []) as Array<{ id: string; exam_id: string; subject_id: string }>;
+    if (topics.length === 0) {
+      if (studentId) {
+        void putOfflineKv({
+          key: offlineKeys.lessonCounts(studentId),
+          userId: studentId,
+          category: 'lessonCounts',
+          value: [],
+          updatedAt: Date.now(),
+        });
+      }
+      return { counts, error: null };
+    }
+
+    const topicIds = topics.map((t) => t.id);
+    const lessonsRes = await supabase
+      .from('lessons')
+      .select('id, topic_id')
+      .in('topic_id', topicIds)
+      .eq('is_published', true);
+
+    if (lessonsRes.error) {
+      if (isLikelyNetworkError(lessonsRes.error)) {
+        const cached = await readCache();
+        if (cached) return { counts: cached, error: null };
+      }
+      return { counts, error: mapDatabaseError(lessonsRes.error) };
+    }
+
+    const topicMap = new Map<string, { examId: string; subjectId: string }>();
+    for (const t of topics) {
+      topicMap.set(t.id, { examId: t.exam_id, subjectId: t.subject_id });
+    }
+
+    for (const lesson of (lessonsRes.data ?? []) as Array<{ id: string; topic_id: string }>) {
+      const parent = topicMap.get(lesson.topic_id);
+      if (!parent) continue;
+      const key = `${parent.examId}:${parent.subjectId}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    if (studentId) {
+      void putOfflineKv({
+        key: offlineKeys.lessonCounts(studentId),
+        userId: studentId,
+        category: 'lessonCounts',
+        value: Array.from(counts.entries()),
+        updatedAt: Date.now(),
+      });
+    }
+
     return { counts, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      const cached = await readCache();
+      if (cached) return { counts: cached, error: null };
+    }
+    return { counts, error: 'Network error while loading subject counts.' };
   }
-
-  const topicIds = topics.map((t) => t.id);
-  const lessonsRes = await supabase
-    .from('lessons')
-    .select('id, topic_id')
-    .in('topic_id', topicIds)
-    .eq('is_published', true);
-
-  if (lessonsRes.error) {
-    return { counts, error: mapDatabaseError(lessonsRes.error) };
-  }
-
-  const topicMap = new Map<string, { examId: string; subjectId: string }>();
-  for (const t of topics) {
-    topicMap.set(t.id, { examId: t.exam_id, subjectId: t.subject_id });
-  }
-
-  for (const lesson of (lessonsRes.data ?? []) as Array<{ id: string; topic_id: string }>) {
-    const parent = topicMap.get(lesson.topic_id);
-    if (!parent) continue;
-    const key = `${parent.examId}:${parent.subjectId}`;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-
-  return { counts, error: null };
 }
 
 export async function fetchRecentLesson(studentId: string): Promise<{
@@ -362,64 +464,78 @@ export async function fetchRecentLesson(studentId: string): Promise<{
     return { recentLesson: null, error: 'Supabase is not configured.' };
   }
 
-  const progressRes = await supabase
-    .from('student_lesson_progress')
-    .select('lesson_id, is_completed, last_opened_at')
-    .eq('student_id', studentId)
-    .order('last_opened_at', { ascending: false })
-    .limit(5);
+  const readCache = async () => {
+    const cached = await getOfflineKv<RecentLessonItem | null>(offlineKeys.recentLesson(studentId));
+    return cached ? cached.value : undefined;
+  };
 
-  if (progressRes.error) {
-    return { recentLesson: null, error: mapDatabaseError(progressRes.error) };
+  if (!isDeviceOnline()) {
+    const cached = await readCache();
+    if (cached !== undefined) return { recentLesson: cached, error: null };
   }
 
-  const progressRows = (progressRes.data ?? []) as Array<{
-    lesson_id: string;
-    is_completed: boolean;
-    last_opened_at: string;
-  }>;
+  try {
+    const progressRes = await supabase
+      .from('student_lesson_progress')
+      .select('lesson_id, is_completed, last_opened_at')
+      .eq('student_id', studentId)
+      .order('last_opened_at', { ascending: false })
+      .limit(5);
 
-  if (progressRows.length === 0) {
-    return { recentLesson: null, error: null };
-  }
+    if (progressRes.error) {
+      if (isLikelyNetworkError(progressRes.error)) {
+        const cached = await readCache();
+        if (cached !== undefined) return { recentLesson: cached, error: null };
+      }
+      return { recentLesson: null, error: mapDatabaseError(progressRes.error) };
+    }
 
-  // Find the most recent progress row whose lesson & topic are still published & accessible via RLS
-  for (const row of progressRows) {
-    const lessonRes = await supabase
-      .from('lessons')
-      .select('id, title, topic_id')
-      .eq('id', row.lesson_id)
-      .eq('is_published', true)
-      .maybeSingle();
+    const progressRows = (progressRes.data ?? []) as Array<{
+      lesson_id: string;
+      is_completed: boolean;
+      last_opened_at: string;
+    }>;
 
-    if (!lessonRes.data) continue;
+    if (progressRows.length === 0) {
+      void cacheRecentLesson(studentId, null);
+      return { recentLesson: null, error: null };
+    }
 
-    const topicRes = await supabase
-      .from('topics')
-      .select('id, title, exam_id, subject_id')
-      .eq('id', lessonRes.data.topic_id)
-      .eq('is_published', true)
-      .maybeSingle();
+    for (const row of progressRows) {
+      const lessonRes = await supabase
+        .from('lessons')
+        .select('id, title, topic_id')
+        .eq('id', row.lesson_id)
+        .eq('is_published', true)
+        .maybeSingle();
 
-    if (!topicRes.data) continue;
+      if (!lessonRes.data) continue;
 
-    const [examRes, subjectRes] = await Promise.all([
-      supabase
-        .from('exams')
-        .select('name, slug')
-        .eq('id', topicRes.data.exam_id)
-        .maybeSingle(),
-      supabase
-        .from('subjects')
-        .select('name, slug')
-        .eq('id', topicRes.data.subject_id)
-        .maybeSingle(),
-    ]);
+      const topicRes = await supabase
+        .from('topics')
+        .select('id, title, exam_id, subject_id')
+        .eq('id', lessonRes.data.topic_id)
+        .eq('is_published', true)
+        .maybeSingle();
 
-    if (!examRes.data || !subjectRes.data) continue;
+      if (!topicRes.data) continue;
 
-    return {
-      recentLesson: {
+      const [examRes, subjectRes] = await Promise.all([
+        supabase
+          .from('exams')
+          .select('name, slug')
+          .eq('id', topicRes.data.exam_id)
+          .maybeSingle(),
+        supabase
+          .from('subjects')
+          .select('name, slug')
+          .eq('id', topicRes.data.subject_id)
+          .maybeSingle(),
+      ]);
+
+      if (!examRes.data || !subjectRes.data) continue;
+
+      const recent: RecentLessonItem = {
         lessonId: lessonRes.data.id,
         lessonTitle: lessonRes.data.title,
         topicTitle: topicRes.data.title,
@@ -429,12 +545,20 @@ export async function fetchRecentLesson(studentId: string): Promise<{
         examSlug: examRes.data.slug,
         lastOpenedAt: row.last_opened_at,
         isCompleted: row.is_completed,
-      },
-      error: null,
-    };
-  }
+      };
+      void cacheRecentLesson(studentId, recent);
+      return { recentLesson: recent, error: null };
+    }
 
-  return { recentLesson: null, error: null };
+    void cacheRecentLesson(studentId, null);
+    return { recentLesson: null, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      const cached = await readCache();
+      if (cached !== undefined) return { recentLesson: cached, error: null };
+    }
+    return { recentLesson: null, error: 'Network error while loading recent lesson.' };
+  }
 }
 
 export async function fetchSubjectTopicsAndLessons(
@@ -446,6 +570,7 @@ export async function fetchSubjectTopicsAndLessons(
   subject: Subject | null;
   topics: TopicWithLessons[];
   hasAccess: boolean;
+  fromCache?: boolean;
   error: string | null;
 }> {
   if (!supabase) {
@@ -458,142 +583,235 @@ export async function fetchSubjectTopicsAndLessons(
     };
   }
 
-  const [examRes, subjectRes] = await Promise.all([
-    supabase
-      .from('exams')
-      .select('id, name, slug, description, is_active, created_at')
-      .eq('slug', examSlug)
-      .eq('is_active', true)
-      .maybeSingle(),
-    supabase
-      .from('subjects')
-      .select('id, name, slug, description, is_active, created_at')
-      .eq('slug', subjectSlug)
-      .eq('is_active', true)
-      .maybeSingle(),
-  ]);
+  const cacheKey = offlineKeys.subject(studentId, examSlug, subjectSlug);
 
-  if (examRes.error) {
-    return { exam: null, subject: null, topics: [], hasAccess: false, error: mapDatabaseError(examRes.error) };
-  }
-  if (subjectRes.error) {
-    return { exam: null, subject: null, topics: [], hasAccess: false, error: mapDatabaseError(subjectRes.error) };
-  }
+  const readSubjectCache = async () => {
+    const cached = await getOfflineKv<CachedSubjectBundle>(cacheKey);
+    if (!cached?.value) return null;
 
-  const exam = examRes.data as Exam | null;
-  const subject = subjectRes.data as Subject | null;
+    const pending = await listOfflineSyncQueue(studentId);
+    const completionOverride = new Map<string, boolean>();
+    for (const act of pending) {
+      if (act.kind === 'lesson_completion') {
+        completionOverride.set(act.payload.lessonId, act.payload.isCompleted);
+      }
+    }
 
-  if (!exam || !subject) {
-    return { exam, subject, topics: [], hasAccess: false, error: 'Examination or subject not found.' };
-  }
+    const topicsWithOverrides = cached.value.topics.map((tp) => ({
+      ...tp,
+      lessons: tp.lessons.map((l) =>
+        completionOverride.has(l.id) ? { ...l, isCompleted: completionOverride.get(l.id)! } : l
+      ),
+    }));
 
-  const accessRes = await supabase.rpc('student_has_subject_access', {
-    p_exam_id: exam.id,
-    p_subject_id: subject.id,
-  });
+    return {
+      exam: cached.value.exam,
+      subject: cached.value.subject,
+      topics: topicsWithOverrides,
+      hasAccess: cached.value.hasAccess,
+      fromCache: true,
+      error: null,
+    };
+  };
 
-  if (accessRes.error) {
-    return { exam, subject, topics: [], hasAccess: false, error: mapDatabaseError(accessRes.error) };
+  if (!isDeviceOnline()) {
+    const cached = await readSubjectCache();
+    if (cached) return cached;
   }
 
-  const hasAccess = Boolean(accessRes.data);
-  if (!hasAccess) {
-    return { exam, subject, topics: [], hasAccess: false, error: null };
-  }
+  try {
+    const [examRes, subjectRes] = await Promise.all([
+      supabase
+        .from('exams')
+        .select('id, name, slug, description, is_active, created_at')
+        .eq('slug', examSlug)
+        .eq('is_active', true)
+        .maybeSingle(),
+      supabase
+        .from('subjects')
+        .select('id, name, slug, description, is_active, created_at')
+        .eq('slug', subjectSlug)
+        .eq('is_active', true)
+        .maybeSingle(),
+    ]);
 
-  let rawTopics: Topic[] = [];
-  const topicsRes = await supabase
-    .from('topics')
-    .select(
-      'id, exam_id, subject_id, title, description, display_order, is_published, comments_enabled, created_at, updated_at'
-    )
-    .eq('exam_id', exam.id)
-    .eq('subject_id', subject.id)
-    .eq('is_published', true)
-    .order('display_order', { ascending: true });
+    const initialErr = examRes.error || subjectRes.error;
+    if (initialErr) {
+      if (isLikelyNetworkError(initialErr)) {
+        const cached = await readSubjectCache();
+        if (cached) return cached;
+      }
+      return { exam: null, subject: null, topics: [], hasAccess: false, error: mapDatabaseError(initialErr) };
+    }
 
-  if (
-    topicsRes.error &&
-    (topicsRes.error.code === '42703' ||
-      (topicsRes.error.message ?? '').toLowerCase().includes('comments_enabled'))
-  ) {
-    const fallback = await supabase
+    const exam = examRes.data as Exam | null;
+    const subject = subjectRes.data as Subject | null;
+
+    if (!exam || !subject) {
+      return { exam, subject, topics: [], hasAccess: false, error: 'Examination or subject not found.' };
+    }
+
+    const accessRes = await supabase.rpc('student_has_subject_access', {
+      p_exam_id: exam.id,
+      p_subject_id: subject.id,
+    });
+
+    if (accessRes.error) {
+      if (isLikelyNetworkError(accessRes.error)) {
+        const cached = await readSubjectCache();
+        if (cached) return cached;
+      }
+      return { exam, subject, topics: [], hasAccess: false, error: mapDatabaseError(accessRes.error) };
+    }
+
+    const hasAccess = Boolean(accessRes.data);
+    if (!hasAccess) {
+      return { exam, subject, topics: [], hasAccess: false, error: null };
+    }
+
+    let rawTopics: Topic[] = [];
+    const topicsRes = await supabase
       .from('topics')
       .select(
-        'id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at'
+        'id, exam_id, subject_id, title, description, display_order, is_published, comments_enabled, created_at, updated_at'
       )
       .eq('exam_id', exam.id)
       .eq('subject_id', subject.id)
       .eq('is_published', true)
       .order('display_order', { ascending: true });
 
-    if (fallback.error) {
-      return { exam, subject, topics: [], hasAccess: true, error: mapDatabaseError(fallback.error) };
+    if (
+      topicsRes.error &&
+      (topicsRes.error.code === '42703' ||
+        (topicsRes.error.message ?? '').toLowerCase().includes('comments_enabled'))
+    ) {
+      const fallback = await supabase
+        .from('topics')
+        .select(
+          'id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at'
+        )
+        .eq('exam_id', exam.id)
+        .eq('subject_id', subject.id)
+        .eq('is_published', true)
+        .order('display_order', { ascending: true });
+
+      if (fallback.error) {
+        if (isLikelyNetworkError(fallback.error)) {
+          const cached = await readSubjectCache();
+          if (cached) return cached;
+        }
+        return { exam, subject, topics: [], hasAccess: true, error: mapDatabaseError(fallback.error) };
+      }
+
+      rawTopics = ((fallback.data ?? []) as Array<Omit<Topic, 'comments_enabled'>>).map((t) => ({
+        ...t,
+        comments_enabled: true,
+      }));
+    } else if (topicsRes.error) {
+      if (isLikelyNetworkError(topicsRes.error)) {
+        const cached = await readSubjectCache();
+        if (cached) return cached;
+      }
+      return { exam, subject, topics: [], hasAccess: true, error: mapDatabaseError(topicsRes.error) };
+    } else {
+      rawTopics = (topicsRes.data ?? []) as Topic[];
     }
 
-    rawTopics = ((fallback.data ?? []) as Array<Omit<Topic, 'comments_enabled'>>).map((t) => ({
+    const topics = rawTopics.map((t) => ({
       ...t,
-      comments_enabled: true,
+      comments_enabled: t.comments_enabled ?? true,
     }));
-  } else if (topicsRes.error) {
-    return { exam, subject, topics: [], hasAccess: true, error: mapDatabaseError(topicsRes.error) };
-  } else {
-    rawTopics = (topicsRes.data ?? []) as Topic[];
-  }
+    if (topics.length === 0) {
+      const existing = await getOfflineKv<CachedSubjectBundle>(cacheKey);
+      void putOfflineKv<CachedSubjectBundle>({
+        key: cacheKey,
+        userId: studentId,
+        category: 'subject',
+        value: { exam, subject, topics: [], testsByTopicEntries: [], hasAccess: true },
+        updatedAt: Date.now(),
+        pinned: existing?.pinned,
+      });
+      return { exam, subject, topics: [], hasAccess: true, error: null };
+    }
 
-  const topics = rawTopics.map((t) => ({
-    ...t,
-    comments_enabled: t.comments_enabled ?? true,
-  }));
-  if (topics.length === 0) {
-    return { exam, subject, topics: [], hasAccess: true, error: null };
-  }
+    const topicIds = topics.map((t) => t.id);
+    const lessonsRes = await supabase
+      .from('lessons')
+      .select(
+        'id, topic_id, title, short_description, description, tutor_name, youtube_url, display_order, is_published, created_at, updated_at'
+      )
+      .in('topic_id', topicIds)
+      .eq('is_published', true)
+      .order('display_order', { ascending: true });
 
-  const topicIds = topics.map((t) => t.id);
-  const lessonsRes = await supabase
-    .from('lessons')
-    .select(
-      'id, topic_id, title, short_description, description, tutor_name, youtube_url, display_order, is_published, created_at, updated_at'
-    )
-    .in('topic_id', topicIds)
-    .eq('is_published', true)
-    .order('display_order', { ascending: true });
+    if (lessonsRes.error) {
+      if (isLikelyNetworkError(lessonsRes.error)) {
+        const cached = await readSubjectCache();
+        if (cached) return cached;
+      }
+      return { exam, subject, topics: [], hasAccess: true, error: mapDatabaseError(lessonsRes.error) };
+    }
 
-  if (lessonsRes.error) {
-    return { exam, subject, topics: [], hasAccess: true, error: mapDatabaseError(lessonsRes.error) };
-  }
+    const lessons = (lessonsRes.data ?? []) as Lesson[];
+    const lessonIds = lessons.map((l) => l.id);
 
-  const lessons = (lessonsRes.data ?? []) as Lesson[];
-  const lessonIds = lessons.map((l) => l.id);
+    const completedSet = new Set<string>();
+    if (lessonIds.length > 0) {
+      const progRes = await supabase
+        .from('student_lesson_progress')
+        .select('lesson_id, is_completed')
+        .eq('student_id', studentId)
+        .in('lesson_id', lessonIds);
 
-  const completedSet = new Set<string>();
-  if (lessonIds.length > 0) {
-    const progRes = await supabase
-      .from('student_lesson_progress')
-      .select('lesson_id, is_completed')
-      .eq('student_id', studentId)
-      .in('lesson_id', lessonIds);
-
-    if (!progRes.error && progRes.data) {
-      for (const row of progRes.data as Array<{ lesson_id: string; is_completed: boolean }>) {
-        if (row.is_completed) completedSet.add(row.lesson_id);
+      if (!progRes.error && progRes.data) {
+        for (const row of progRes.data as Array<{ lesson_id: string; is_completed: boolean }>) {
+          if (row.is_completed) completedSet.add(row.lesson_id);
+        }
       }
     }
+
+    const lessonsByTopic = new Map<string, Array<Lesson & { isCompleted: boolean }>>();
+    for (const lesson of lessons) {
+      const list = lessonsByTopic.get(lesson.topic_id) ?? [];
+      list.push({ ...lesson, isCompleted: completedSet.has(lesson.id) });
+      lessonsByTopic.set(lesson.topic_id, list);
+    }
+
+    const topicsWithLessons: TopicWithLessons[] = topics.map((t) => ({
+      ...t,
+      lessons: (lessonsByTopic.get(t.id) ?? []).sort((a, b) => a.display_order - b.display_order),
+    }));
+
+    const existing = await getOfflineKv<CachedSubjectBundle>(cacheKey);
+    void putOfflineKv<CachedSubjectBundle>({
+      key: cacheKey,
+      userId: studentId,
+      category: 'subject',
+      value: {
+        exam,
+        subject,
+        topics: topicsWithLessons,
+        testsByTopicEntries: existing?.value?.testsByTopicEntries ?? [],
+        hasAccess: true,
+      },
+      updatedAt: Date.now(),
+      pinned: existing?.pinned,
+    });
+
+    return { exam, subject, topics: topicsWithLessons, hasAccess: true, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      const cached = await readSubjectCache();
+      if (cached) return cached;
+    }
+    return {
+      exam: null,
+      subject: null,
+      topics: [],
+      hasAccess: false,
+      error: 'Network error while loading subject topics and lessons.',
+    };
   }
-
-  const lessonsByTopic = new Map<string, Array<Lesson & { isCompleted: boolean }>>();
-  for (const lesson of lessons) {
-    const list = lessonsByTopic.get(lesson.topic_id) ?? [];
-    list.push({ ...lesson, isCompleted: completedSet.has(lesson.id) });
-    lessonsByTopic.set(lesson.topic_id, list);
-  }
-
-  const topicsWithLessons: TopicWithLessons[] = topics.map((t) => ({
-    ...t,
-    lessons: (lessonsByTopic.get(t.id) ?? []).sort((a, b) => a.display_order - b.display_order),
-  }));
-
-  return { exam, subject, topics: topicsWithLessons, hasAccess: true, error: null };
 }
 
 export async function fetchLessonDetail(
@@ -602,6 +820,7 @@ export async function fetchLessonDetail(
   options?: { allowDrafts?: boolean }
 ): Promise<{
   data: LessonDetailData | null;
+  fromCache?: boolean;
   error: string | null;
 }> {
   if (!supabase) {
@@ -609,229 +828,261 @@ export async function fetchLessonDetail(
   }
 
   const allowDrafts = Boolean(options?.allowDrafts);
+  const cacheKey = offlineKeys.lesson(studentId, lessonId);
 
-  let lessonQuery = supabase
-    .from('lessons')
-    .select(
-      'id, topic_id, title, short_description, description, tutor_name, youtube_url, display_order, is_published, created_at, updated_at'
-    )
-    .eq('id', lessonId);
+  const readLessonCache = async () => {
+    const cached = await getOfflineKv<CachedLessonBundle>(cacheKey);
+    if (!cached?.value?.detail) return null;
 
-  if (!allowDrafts) {
-    lessonQuery = lessonQuery.eq('is_published', true);
-  }
+    const pending = await listOfflineSyncQueue(studentId);
+    const completionOverride = pending.find(
+      (a) => a.kind === 'lesson_completion' && a.payload.lessonId === lessonId
+    );
+    const detail = completionOverride && completionOverride.kind === 'lesson_completion'
+      ? { ...cached.value.detail, isCompleted: completionOverride.payload.isCompleted }
+      : cached.value.detail;
 
-  const lessonRes = await lessonQuery.maybeSingle();
-
-  if (lessonRes.error) {
-    return { data: null, error: mapDatabaseError(lessonRes.error) };
-  }
-
-  const lesson = lessonRes.data as Lesson | null;
-  if (!lesson) {
-    return {
-      data: null,
-      error: 'Lesson not found, unpublished, or not included in your selected subjects.',
-    };
-  }
-
-  let topicQuery = supabase
-    .from('topics')
-    .select(
-      'id, exam_id, subject_id, title, description, display_order, is_published, comments_enabled, created_at, updated_at'
-    )
-    .eq('id', lesson.topic_id);
-
-  if (!allowDrafts) {
-    topicQuery = topicQuery.eq('is_published', true);
-  }
-
-  let topicRes = await topicQuery.maybeSingle();
-
-  if (
-    topicRes.error &&
-    (topicRes.error.code === '42703' ||
-      (topicRes.error.message ?? '').toLowerCase().includes('comments_enabled'))
-  ) {
-    let fallbackQuery = supabase
-      .from('topics')
-      .select(
-        'id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at'
-      )
-      .eq('id', lesson.topic_id);
-    if (!allowDrafts) {
-      fallbackQuery = fallbackQuery.eq('is_published', true);
-    }
-    const fallbackRes = await fallbackQuery.maybeSingle();
-    topicRes = {
-      ...fallbackRes,
-      data: fallbackRes.data
-        ? { ...(fallbackRes.data as Omit<Topic, 'comments_enabled'>), comments_enabled: true }
-        : null,
-    } as typeof topicRes;
-  }
-
-  if (topicRes.error || !topicRes.data) {
-    return {
-      data: null,
-      error: topicRes.error
-        ? mapDatabaseError(topicRes.error)
-        : 'This lesson is currently unavailable or its parent topic has not been published yet.',
-    };
-  }
-
-  const topic: Topic = {
-    ...(topicRes.data as Topic),
-    comments_enabled: (topicRes.data as Topic).comments_enabled ?? true,
+    return { data: detail, fromCache: true, error: null };
   };
 
-  let subjectTopicsQuery = supabase
-    .from('topics')
-    .select('id, title, display_order')
-    .eq('exam_id', topic.exam_id)
-    .eq('subject_id', topic.subject_id)
-    .order('display_order', { ascending: true });
-
-  if (!allowDrafts) {
-    subjectTopicsQuery = subjectTopicsQuery.eq('is_published', true);
+  if (!isDeviceOnline()) {
+    const cached = await readLessonCache();
+    if (cached) return cached;
   }
 
-  const [examRes, subjectRes, materialsRes, linksRes, subjectTopicsRes, progressRes] =
-    await Promise.all([
-      supabase
-        .from('exams')
-        .select('id, name, slug, description, is_active, created_at')
-        .eq('id', topic.exam_id)
-        .maybeSingle(),
-      supabase
-        .from('subjects')
-        .select('id, name, slug, description, is_active, created_at')
-        .eq('id', topic.subject_id)
-        .maybeSingle(),
-      supabase
-        .from('lesson_materials')
-        .select('id, lesson_id, title, file_type, file_url, display_order, created_at')
-        .eq('lesson_id', lesson.id)
-        .order('display_order', { ascending: true }),
-      supabase
-        .from('lesson_links')
-        .select('id, lesson_id, title, url, display_order')
-        .eq('lesson_id', lesson.id)
-        .order('display_order', { ascending: true }),
-      subjectTopicsQuery,
-      supabase
-        .from('student_lesson_progress')
-        .select('id, is_completed')
-        .eq('student_id', studentId)
-        .eq('lesson_id', lesson.id)
-        .maybeSingle(),
-    ]);
-
-  if (examRes.error || !examRes.data || subjectRes.error || !subjectRes.data) {
-    return { data: null, error: 'Unable to load examination or subject details.' };
-  }
-
-  // Record recently opened timestamp reliably
-  const nowIso = new Date().toISOString();
-  void supabase
-    .from('student_lesson_progress')
-    .upsert(
-      {
-        student_id: studentId,
-        lesson_id: lesson.id,
-        last_opened_at: nowIso,
-      },
-      { onConflict: 'student_id,lesson_id' }
-    );
-
-  // Build ordered sequence across topics/lessons for Previous/Next & Related
-  const orderedTopics = (subjectTopicsRes.data ?? []) as Array<{
-    id: string;
-    title: string;
-    display_order: number;
-  }>;
-  const allTopicIds = orderedTopics.map((t) => t.id);
-
-  let previousLesson: { id: string; title: string } | null = null;
-  let nextLesson: { id: string; title: string } | null = null;
-  const relatedLessons: LessonDetailData['relatedLessons'] = [];
-
-  if (allTopicIds.length > 0) {
-    let allLessonsQuery = supabase
+  try {
+    let lessonQuery = supabase
       .from('lessons')
-      .select('id, topic_id, title, short_description, display_order')
-      .in('topic_id', allTopicIds)
+      .select(
+        'id, topic_id, title, short_description, description, tutor_name, youtube_url, display_order, is_published, created_at, updated_at'
+      )
+      .eq('id', lessonId);
+
+    if (!allowDrafts) {
+      lessonQuery = lessonQuery.eq('is_published', true);
+    }
+
+    const lessonRes = await lessonQuery.maybeSingle();
+
+    if (lessonRes.error) {
+      if (isLikelyNetworkError(lessonRes.error)) {
+        const cached = await readLessonCache();
+        if (cached) return cached;
+      }
+      return { data: null, error: mapDatabaseError(lessonRes.error) };
+    }
+
+    const lesson = lessonRes.data as Lesson | null;
+    if (!lesson) {
+      return {
+        data: null,
+        error: 'Lesson not found, unpublished, or not included in your selected subjects.',
+      };
+    }
+
+    let topicQuery = supabase
+      .from('topics')
+      .select(
+        'id, exam_id, subject_id, title, description, display_order, is_published, comments_enabled, created_at, updated_at'
+      )
+      .eq('id', lesson.topic_id);
+
+    if (!allowDrafts) {
+      topicQuery = topicQuery.eq('is_published', true);
+    }
+
+    let topicRes = await topicQuery.maybeSingle();
+
+    if (
+      topicRes.error &&
+      (topicRes.error.code === '42703' ||
+        (topicRes.error.message ?? '').toLowerCase().includes('comments_enabled'))
+    ) {
+      let fallbackQuery = supabase
+        .from('topics')
+        .select(
+          'id, exam_id, subject_id, title, description, display_order, is_published, created_at, updated_at'
+        )
+        .eq('id', lesson.topic_id);
+      if (!allowDrafts) {
+        fallbackQuery = fallbackQuery.eq('is_published', true);
+      }
+      const fallbackRes = await fallbackQuery.maybeSingle();
+      topicRes = {
+        ...fallbackRes,
+        data: fallbackRes.data
+          ? { ...(fallbackRes.data as Omit<Topic, 'comments_enabled'>), comments_enabled: true }
+          : null,
+      } as typeof topicRes;
+    }
+
+    if (topicRes.error || !topicRes.data) {
+      if (topicRes.error && isLikelyNetworkError(topicRes.error)) {
+        const cached = await readLessonCache();
+        if (cached) return cached;
+      }
+      return {
+        data: null,
+        error: topicRes.error
+          ? mapDatabaseError(topicRes.error)
+          : 'This lesson is currently unavailable or its parent topic has not been published yet.',
+      };
+    }
+
+    const topic: Topic = {
+      ...(topicRes.data as Topic),
+      comments_enabled: (topicRes.data as Topic).comments_enabled ?? true,
+    };
+
+    let subjectTopicsQuery = supabase
+      .from('topics')
+      .select('id, title, display_order')
+      .eq('exam_id', topic.exam_id)
+      .eq('subject_id', topic.subject_id)
       .order('display_order', { ascending: true });
 
     if (!allowDrafts) {
-      allLessonsQuery = allLessonsQuery.eq('is_published', true);
+      subjectTopicsQuery = subjectTopicsQuery.eq('is_published', true);
     }
 
-    const [allLessonsRes, allProgressRes] = await Promise.all([
-      allLessonsQuery,
-      supabase
-        .from('student_lesson_progress')
-        .select('lesson_id, is_completed')
-        .eq('student_id', studentId),
-    ]);
+    const [examRes, subjectRes, materialsRes, linksRes, subjectTopicsRes, progressRes] =
+      await Promise.all([
+        supabase
+          .from('exams')
+          .select('id, name, slug, description, is_active, created_at')
+          .eq('id', topic.exam_id)
+          .maybeSingle(),
+        supabase
+          .from('subjects')
+          .select('id, name, slug, description, is_active, created_at')
+          .eq('id', topic.subject_id)
+          .maybeSingle(),
+        supabase
+          .from('lesson_materials')
+          .select('id, lesson_id, title, file_type, file_url, display_order, created_at')
+          .eq('lesson_id', lesson.id)
+          .order('display_order', { ascending: true }),
+        supabase
+          .from('lesson_links')
+          .select('id, lesson_id, title, url, display_order')
+          .eq('lesson_id', lesson.id)
+          .order('display_order', { ascending: true }),
+        subjectTopicsQuery,
+        supabase
+          .from('student_lesson_progress')
+          .select('id, is_completed')
+          .eq('student_id', studentId)
+          .eq('lesson_id', lesson.id)
+          .maybeSingle(),
+      ]);
 
-    const topicOrderMap = new Map<string, { order: number; title: string }>();
-    orderedTopics.forEach((t, idx) => topicOrderMap.set(t.id, { order: idx, title: t.title }));
-
-    const completedIds = new Set<string>();
-    for (const p of (allProgressRes.data ?? []) as Array<{ lesson_id: string; is_completed: boolean }>) {
-      if (p.is_completed) completedIds.add(p.lesson_id);
+    const anyErr = examRes.error || subjectRes.error;
+    if (anyErr && isLikelyNetworkError(anyErr)) {
+      const cached = await readLessonCache();
+      if (cached) return cached;
     }
 
-    const flatLessons = ((allLessonsRes.data ?? []) as Array<{
+    if (examRes.error || !examRes.data || subjectRes.error || !subjectRes.data) {
+      return { data: null, error: 'Unable to load examination or subject details.' };
+    }
+
+    // Record recently opened timestamp reliably when online
+    const nowIso = new Date().toISOString();
+    void supabase
+      .from('student_lesson_progress')
+      .upsert(
+        {
+          student_id: studentId,
+          lesson_id: lesson.id,
+          last_opened_at: nowIso,
+        },
+        { onConflict: 'student_id,lesson_id' }
+      );
+
+    const orderedTopics = (subjectTopicsRes.data ?? []) as Array<{
       id: string;
-      topic_id: string;
       title: string;
-      short_description: string | null;
       display_order: number;
-    }>).sort((a, b) => {
-      const ta = topicOrderMap.get(a.topic_id)?.order ?? 0;
-      const tb = topicOrderMap.get(b.topic_id)?.order ?? 0;
-      if (ta !== tb) return ta - tb;
-      return a.display_order - b.display_order;
-    });
+    }>;
+    const allTopicIds = orderedTopics.map((t) => t.id);
 
-    const currentIdx = flatLessons.findIndex((l) => l.id === lesson.id);
-    if (currentIdx > 0) {
-      previousLesson = {
-        id: flatLessons[currentIdx - 1].id,
-        title: flatLessons[currentIdx - 1].title,
-      };
-    }
-    if (currentIdx >= 0 && currentIdx < flatLessons.length - 1) {
-      nextLesson = {
-        id: flatLessons[currentIdx + 1].id,
-        title: flatLessons[currentIdx + 1].title,
-      };
-    }
+    let previousLesson: { id: string; title: string } | null = null;
+    let nextLesson: { id: string; title: string } | null = null;
+    const relatedLessons: LessonDetailData['relatedLessons'] = [];
 
-    // Prefer sibling lessons in the same topic first, then adjacent lessons in the subject
-    const sameTopicOthers = flatLessons.filter(
-      (l) => l.topic_id === lesson.topic_id && l.id !== lesson.id
-    );
-    const otherTopicLessons = flatLessons.filter(
-      (l) => l.topic_id !== lesson.topic_id && l.id !== lesson.id
-    );
-    for (const rel of [...sameTopicOthers, ...otherTopicLessons].slice(0, 4)) {
-      relatedLessons.push({
-        id: rel.id,
-        title: rel.title,
-        short_description: rel.short_description,
-        topicTitle: topicOrderMap.get(rel.topic_id)?.title ?? topic.title,
-        isCompleted: completedIds.has(rel.id),
+    if (allTopicIds.length > 0) {
+      let allLessonsQuery = supabase
+        .from('lessons')
+        .select('id, topic_id, title, short_description, display_order')
+        .in('topic_id', allTopicIds)
+        .order('display_order', { ascending: true });
+
+      if (!allowDrafts) {
+        allLessonsQuery = allLessonsQuery.eq('is_published', true);
+      }
+
+      const [allLessonsRes, allProgressRes] = await Promise.all([
+        allLessonsQuery,
+        supabase
+          .from('student_lesson_progress')
+          .select('lesson_id, is_completed')
+          .eq('student_id', studentId),
+      ]);
+
+      const topicOrderMap = new Map<string, { order: number; title: string }>();
+      orderedTopics.forEach((t, idx) => topicOrderMap.set(t.id, { order: idx, title: t.title }));
+
+      const completedIds = new Set<string>();
+      for (const p of (allProgressRes.data ?? []) as Array<{ lesson_id: string; is_completed: boolean }>) {
+        if (p.is_completed) completedIds.add(p.lesson_id);
+      }
+
+      const flatLessons = ((allLessonsRes.data ?? []) as Array<{
+        id: string;
+        topic_id: string;
+        title: string;
+        short_description: string | null;
+        display_order: number;
+      }>).sort((a, b) => {
+        const ta = topicOrderMap.get(a.topic_id)?.order ?? 0;
+        const tb = topicOrderMap.get(b.topic_id)?.order ?? 0;
+        if (ta !== tb) return ta - tb;
+        return a.display_order - b.display_order;
       });
+
+      const currentIdx = flatLessons.findIndex((l) => l.id === lesson.id);
+      if (currentIdx > 0) {
+        previousLesson = {
+          id: flatLessons[currentIdx - 1].id,
+          title: flatLessons[currentIdx - 1].title,
+        };
+      }
+      if (currentIdx >= 0 && currentIdx < flatLessons.length - 1) {
+        nextLesson = {
+          id: flatLessons[currentIdx + 1].id,
+          title: flatLessons[currentIdx + 1].title,
+        };
+      }
+
+      const sameTopicOthers = flatLessons.filter(
+        (l) => l.topic_id === lesson.topic_id && l.id !== lesson.id
+      );
+      const otherTopicLessons = flatLessons.filter(
+        (l) => l.topic_id !== lesson.topic_id && l.id !== lesson.id
+      );
+      for (const rel of [...sameTopicOthers, ...otherTopicLessons].slice(0, 4)) {
+        relatedLessons.push({
+          id: rel.id,
+          title: rel.title,
+          short_description: rel.short_description,
+          topicTitle: topicOrderMap.get(rel.topic_id)?.title ?? topic.title,
+          isCompleted: completedIds.has(rel.id),
+        });
+      }
     }
-  }
 
-  const isCompleted = Boolean((progressRes.data as StudentLessonProgress | null)?.is_completed);
-
-  return {
-    data: {
+    const isCompleted = Boolean((progressRes.data as StudentLessonProgress | null)?.is_completed);
+    const detailData: LessonDetailData = {
       lesson,
       topic,
       exam: examRes.data as Exam,
@@ -842,35 +1093,101 @@ export async function fetchLessonDetail(
       previousLesson,
       nextLesson,
       relatedLessons,
-    },
-    error: null,
-  };
+    };
+
+    const existing = await getOfflineKv<CachedLessonBundle>(cacheKey);
+    void putOfflineKv<CachedLessonBundle>({
+      key: cacheKey,
+      userId: studentId,
+      category: 'lesson',
+      value: {
+        detail: detailData,
+        attachedTests: existing?.value?.attachedTests ?? [],
+      },
+      updatedAt: Date.now(),
+      pinned: existing?.pinned,
+    });
+
+    return { data: detailData, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      const cached = await readLessonCache();
+      if (cached) return cached;
+    }
+    return { data: null, error: 'Network error while loading lesson.' };
+  }
 }
 
 export async function setLessonCompletion(
   studentId: string,
   lessonId: string,
-  isCompleted: boolean
-): Promise<{ error: string | null }> {
+  isCompleted: boolean,
+  lessonTitle?: string
+): Promise<{ queuedOffline?: boolean; error: string | null }> {
   if (!supabase) {
     return { error: 'Supabase is not configured.' };
   }
 
-  const nowIso = new Date().toISOString();
-  const { error } = await supabase.from('student_lesson_progress').upsert(
-    {
-      student_id: studentId,
-      lesson_id: lessonId,
-      is_completed: isCompleted,
-      completed_at: isCompleted ? nowIso : null,
-      last_opened_at: nowIso,
-    },
-    { onConflict: 'student_id,lesson_id' }
-  );
+  const updateLocalLessonState = async () => {
+    const key = offlineKeys.lesson(studentId, lessonId);
+    const cached = await getOfflineKv<CachedLessonBundle>(key);
+    if (cached?.value?.detail) {
+      await putOfflineKv<CachedLessonBundle>({
+        ...cached,
+        value: {
+          ...cached.value,
+          detail: {
+            ...cached.value.detail,
+            isCompleted,
+          },
+        },
+        updatedAt: Date.now(),
+      });
+    }
+  };
 
-  if (error) {
-    return { error: mapDatabaseError(error) };
+  const queueFallback = async () => {
+    await updateLocalLessonState();
+    await enqueueOfflineAction({
+      id: `lc:${studentId}:${lessonId}`,
+      userId: studentId,
+      kind: 'lesson_completion',
+      createdAt: Date.now(),
+      payload: { lessonId, lessonTitle, isCompleted },
+    });
+    return { queuedOffline: true, error: null };
+  };
+
+  if (!isDeviceOnline()) {
+    return queueFallback();
   }
 
-  return { error: null };
+  try {
+    const nowIso = new Date().toISOString();
+    const { error } = await supabase.from('student_lesson_progress').upsert(
+      {
+        student_id: studentId,
+        lesson_id: lessonId,
+        is_completed: isCompleted,
+        completed_at: isCompleted ? nowIso : null,
+        last_opened_at: nowIso,
+      },
+      { onConflict: 'student_id,lesson_id' }
+    );
+
+    if (error) {
+      if (isLikelyNetworkError(error)) {
+        return queueFallback();
+      }
+      return { error: mapDatabaseError(error) };
+    }
+
+    await updateLocalLessonState();
+    return { error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      return queueFallback();
+    }
+    return { error: 'Could not update lesson progress.' };
+  }
 }
