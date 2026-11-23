@@ -153,12 +153,91 @@ export async function setTutorAssignedSubjects(
     return { assignedSubjectIds: null, error: 'Supabase is not configured.' };
   }
 
+  const uniqueSubjectIds = Array.from(new Set(subjectIds.filter(Boolean)));
+
   const { data, error } = await supabase.rpc('set_tutor_assigned_subjects', {
     p_tutor_id: tutorId,
-    p_subject_ids: subjectIds,
+    p_subject_ids: uniqueSubjectIds,
   });
 
   if (error) {
+    const msg = (error.message ?? '').toLowerCase();
+    const isAmbiguousBug = error.code === '42702' || msg.includes('ambiguous');
+
+    if (isAmbiguousBug) {
+      // Safe fallback using Super-Admin-only RLS policy on tutor_subject_assignments
+      const { data: authData } = await supabase.auth.getUser();
+      const actorId = authData.user?.id ?? null;
+
+      const existingRes = await supabase
+        .from('tutor_subject_assignments')
+        .select('subject_id')
+        .eq('tutor_id', tutorId);
+
+      if (existingRes.error) {
+        return {
+          assignedSubjectIds: null,
+          error: existingRes.error.message || 'Unable to read tutor subject assignments.',
+        };
+      }
+
+      const existingIds = new Set(
+        ((existingRes.data ?? []) as Array<{ subject_id: string }>).map((r) => r.subject_id)
+      );
+      const desiredIds = new Set(uniqueSubjectIds);
+
+      const toRemove = Array.from(existingIds).filter((id) => !desiredIds.has(id));
+      const toAdd = uniqueSubjectIds.filter((id) => !existingIds.has(id));
+
+      if (toRemove.length > 0) {
+        const delRes = await supabase
+          .from('tutor_subject_assignments')
+          .delete()
+          .eq('tutor_id', tutorId)
+          .in('subject_id', toRemove);
+
+        if (delRes.error) {
+          return {
+            assignedSubjectIds: null,
+            error: delRes.error.message || 'Unable to remove unselected subjects.',
+          };
+        }
+      }
+
+      if (toAdd.length > 0) {
+        const insRes = await supabase.from('tutor_subject_assignments').insert(
+          toAdd.map((subjectId) => ({
+            tutor_id: tutorId,
+            subject_id: subjectId,
+            assigned_by: actorId,
+          }))
+        );
+
+        if (insRes.error) {
+          return {
+            assignedSubjectIds: null,
+            error: insRes.error.message || 'Unable to assign selected subjects.',
+          };
+        }
+      }
+
+      const finalRes = await supabase
+        .from('tutor_subject_assignments')
+        .select('subject_id')
+        .eq('tutor_id', tutorId);
+
+      if (finalRes.error) {
+        return { assignedSubjectIds: uniqueSubjectIds, error: null };
+      }
+
+      return {
+        assignedSubjectIds: ((finalRes.data ?? []) as Array<{ subject_id: string }>).map(
+          (r) => r.subject_id
+        ),
+        error: null,
+      };
+    }
+
     if (isMissingAssignmentsError(error)) {
       return {
         assignedSubjectIds: null,

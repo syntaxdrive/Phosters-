@@ -133,6 +133,7 @@ language plpgsql
 security definer
 set search_path = public, auth
 as $$
+#variable_conflict use_column
 declare
   v_target_role text;
   v_target_email text;
@@ -177,7 +178,13 @@ begin
   insert into public.tutor_subject_assignments (tutor_id, subject_id, assigned_by)
   select p_tutor_id, sid, auth.uid()
   from unnest(v_valid_ids) as sid
-  on conflict (tutor_id, subject_id) do nothing;
+  where not exists (
+    select 1
+    from public.tutor_subject_assignments ex
+    where ex.tutor_id = p_tutor_id
+      and ex.subject_id = sid
+  )
+  on conflict do nothing;
 
   return query
   select tsa.tutor_id, tsa.subject_id
