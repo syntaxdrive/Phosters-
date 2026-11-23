@@ -15,6 +15,8 @@ import {
 } from './server/pushEngine.ts';
 import {
   convertUploadedDocument,
+  importPublicDriveFile,
+  listPublicDriveFolder,
   ocrScannedPdfWithGemini,
   parseQuestionChunkWithGemini,
   verifySuperAdminAuthorization,
@@ -24,6 +26,8 @@ import type { AiGenerateQuestionsRequest } from './src/types/cbt.ts';
 import type { RemindInactiveInput, SendPushPayload } from './src/types/push.ts';
 import type {
   ConvertDocumentRequest,
+  DriveImportRequest,
+  DriveListRequest,
   OcrPdfRequest,
   ParseChunkRequest,
 } from './src/types/questionBank.ts';
@@ -211,6 +215,60 @@ async function createServer() {
           err instanceof Error
             ? `Question parsing error: ${err.message}`
             : 'Unexpected question parsing error.',
+      });
+    }
+  });
+
+  app.post('/api/question-bank/drive-list', async (req, res) => {
+    try {
+      const authCheck = await verifySuperAdminAuthorization(req.headers.authorization);
+      if (!authCheck.ok) {
+        res.status(authCheck.status).json({ error: authCheck.error });
+        return;
+      }
+
+      const body = req.body as DriveListRequest | undefined;
+      if (!body || typeof body !== 'object' || typeof body.urlOrId !== 'string') {
+        res.status(400).json({ error: 'Invalid Google Drive link payload.' });
+        return;
+      }
+
+      const result = await listPublicDriveFolder(body);
+      res.status(result.status).json(result.body);
+    } catch (err) {
+      console.error('Express /api/question-bank/drive-list error:', err);
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? `Google Drive folder error: ${err.message}`
+            : 'Unexpected Google Drive folder error.',
+      });
+    }
+  });
+
+  app.post('/api/question-bank/drive-import', async (req, res) => {
+    try {
+      const authCheck = await verifySuperAdminAuthorization(req.headers.authorization);
+      if (!authCheck.ok) {
+        res.status(authCheck.status).json({ error: authCheck.error });
+        return;
+      }
+
+      const body = req.body as DriveImportRequest | undefined;
+      if (!body || typeof body !== 'object' || typeof body.fileId !== 'string') {
+        res.status(400).json({ error: 'Invalid Google Drive file payload.' });
+        return;
+      }
+
+      const result = await importPublicDriveFile(body);
+      res.status(result.status).json(result.body);
+    } catch (err) {
+      console.error('Express /api/question-bank/drive-import error:', err);
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? `Google Drive import error: ${err.message}`
+            : 'Unexpected Google Drive import error.',
       });
     }
   });

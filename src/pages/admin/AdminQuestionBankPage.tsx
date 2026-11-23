@@ -4,6 +4,8 @@ import {
   Download,
   FileText,
   Filter,
+  FolderOpen,
+  Link2,
   Loader2,
   ScanText,
   Sparkles,
@@ -19,6 +21,8 @@ import {
   deleteBankQuestion,
   estimateClientQuestionCount,
   fetchQuestionBankItems,
+  importPublicDriveFile,
+  listPublicDriveFolder,
   ocrPdfFile,
   parseQuestionChunkText,
   saveParsedQuestionsToBank,
@@ -28,6 +32,7 @@ import {
 import type { Exam, Subject, Topic } from '../../types/database';
 import type {
   DocumentSourceFormat,
+  DriveFolderEntry,
   ParsedBankQuestionDraft,
   QuestionBankItem,
   QuestionBankStatus,
@@ -80,6 +85,13 @@ export function AdminQuestionBankPage() {
   const [runningOcr, setRunningOcr] = useState(false);
   const [ingestError, setIngestError] = useState<string | null>(null);
   const [ingestNotice, setIngestNotice] = useState<string | null>(null);
+
+  // Public Google Drive folder / file import
+  const [driveUrlInput, setDriveUrlInput] = useState('');
+  const [driveLoadingList, setDriveLoadingList] = useState(false);
+  const [driveFolderTitle, setDriveFolderTitle] = useState('');
+  const [driveEntries, setDriveEntries] = useState<DriveFolderEntry[]>([]);
+  const [driveImportingId, setDriveImportingId] = useState<string | null>(null);
 
   // AI chunked parsing & review queue
   const [parsing, setParsing] = useState(false);
@@ -269,6 +281,101 @@ export function AdminQuestionBankPage() {
     setIngestNotice(
       `Gemini OCR extracted ${res.result.charCount.toLocaleString()} characters (~${res.result.estimatedQuestions} questions, ${res.result.chunks.length} batch chunks).`
     );
+  }
+
+  function tryMatchSubjectFromTitle(title: string) {
+    const lower = title.toLowerCase();
+    const matched = subjects.find((s) => {
+      const subLower = s.name.toLowerCase();
+      if (lower.includes(subLower)) return true;
+      if (subLower.includes('english') && (lower.includes('english') || lower.includes('use of eng'))) {
+        return true;
+      }
+      if (subLower.includes('literature') && lower.includes('literature')) {
+        return true;
+      }
+      if (subLower.includes('account') && lower.includes('account')) {
+        return true;
+      }
+      if ((subLower.includes('christian') || subLower.includes('crk') || subLower.includes('crs')) && (lower.includes('crk') || lower.includes('crs'))) {
+        return true;
+      }
+      return false;
+    });
+    if (matched) {
+      setTargetSubjectId(matched.id);
+      setTargetTopicId('');
+    }
+  }
+
+  async function handleBrowseDriveLink(overrideUrlOrId?: string) {
+    const target = (overrideUrlOrId ?? driveUrlInput).trim();
+    if (!target) {
+      setIngestError('Paste a public Google Drive folder or file link first.');
+      return;
+    }
+
+    setIngestError(null);
+    setIngestNotice(null);
+    setDriveLoadingList(true);
+
+    const res = await listPublicDriveFolder(target);
+    setDriveLoadingList(false);
+
+    if (res.error || !res.result) {
+      setIngestError(res.error || 'Could not list Google Drive link.');
+      return;
+    }
+
+    setDriveFolderTitle(res.result.folderTitle);
+    setDriveEntries(res.result.entries);
+    setIngestNotice(
+      `Found ${res.result.entries.length} item${res.result.entries.length === 1 ? '' : 's'} in "${res.result.folderTitle}". Click any file to convert it into plain .txt.`
+    );
+  }
+
+  async function handleImportDriveEntry(entry: DriveFolderEntry) {
+    if (entry.isFolder) {
+      const folderUrl = `https://drive.google.com/drive/folders/${entry.id}`;
+      setDriveUrlInput(folderUrl);
+      await handleBrowseDriveLink(folderUrl);
+      return;
+    }
+
+    setIngestError(null);
+    setIngestNotice(null);
+    setDriveImportingId(entry.id);
+
+    tryMatchSubjectFromTitle(entry.title);
+    const res = await importPublicDriveFile(entry.id, entry.title);
+    setDriveImportingId(null);
+
+    if (res.error || !res.result) {
+      setIngestError(res.error || `Could not import "${entry.title}" from Google Drive.`);
+      return;
+    }
+
+    setSelectedFile(null);
+    setSourceFileName(res.result.fileName);
+    setSourceFormat(res.result.sourceFormat);
+    setPageCount(res.result.pageCount);
+    setConvertedText(res.result.convertedText);
+    setIsScannedLikely(res.result.isScannedLikely);
+
+    const hasAnswerKeys = /ANSWER(?:S)?\s*KEY(?:S)?/i.test(res.result.convertedText);
+    if (res.result.isScannedLikely) {
+      setIngestNotice(
+        `Imported "${entry.title}" (${res.result.pageCount} pages), but text density is low — download and upload via Gemini OCR if it is scanned.`
+      );
+    } else if (!hasAnswerKeys) {
+      setIngestNotice(
+        `Imported "${entry.title}" (${res.result.pageCount} pages, ~${res.result.estimatedQuestions} est. questions). Note: No Answer Key section was detected inside this PDF, so verify correct options in the Review Queue before publishing.`
+      );
+    } else {
+      setIngestNotice(
+        `Imported "${entry.title}" (${res.result.pageCount} pages, ~${res.result.estimatedQuestions} est. questions, ${res.result.chunks.length} answer-key-linked chunks ready for AI parsing).`
+      );
+    }
   }
 
   function handleDownloadTxt() {
@@ -730,6 +837,96 @@ export function AdminQuestionBankPage() {
                   </Button>
                 )}
               </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-end gap-2.5">
+                <div className="flex-1 space-y-1">
+                  <label
+                    htmlFor="qb-drive-url"
+                    className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                  >
+                    Or load directly from a public Google Drive folder / file link
+                  </label>
+                  <input
+                    id="qb-drive-url"
+                    type="url"
+                    value={driveUrlInput}
+                    onChange={(e) => setDriveUrlInput(e.target.value)}
+                    placeholder="https://drive.google.com/open?id=... or .../folders/..."
+                    className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  loading={driveLoadingList}
+                  onClick={() => void handleBrowseDriveLink()}
+                >
+                  <Link2 className="h-4 w-4" aria-hidden="true" />
+                  <span>{driveLoadingList ? 'Loading Drive...' : 'Browse Drive Link'}</span>
+                </Button>
+              </div>
+
+              {driveEntries.length > 0 && (
+                <div className="rounded-lg border border-slate-200 dark:border-slate-800 divide-y divide-slate-200 dark:divide-slate-800 overflow-hidden">
+                  <div className="px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between gap-2 text-xs">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                      {driveFolderTitle}
+                    </span>
+                    <span className="text-slate-500 dark:text-slate-400 tabular-nums shrink-0">
+                      {driveEntries.length} items
+                    </span>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto divide-y divide-slate-200 dark:divide-slate-800">
+                    {driveEntries.map((entry) => {
+                      const isImporting = driveImportingId === entry.id;
+                      const hasAnswersInName = /and answers/i.test(entry.title);
+                      return (
+                        <div
+                          key={entry.id}
+                          className="px-3.5 py-2.5 flex items-center justify-between gap-3 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                        >
+                          <div className="min-w-0 flex items-center gap-2.5">
+                            {entry.isFolder ? (
+                              <FolderOpen className="h-4 w-4 text-slate-500 shrink-0" aria-hidden="true" />
+                            ) : (
+                              <FileText className="h-4 w-4 text-phosters-600 dark:text-phosters-400 shrink-0" aria-hidden="true" />
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                                {entry.title}
+                              </p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">
+                                {entry.isFolder
+                                  ? 'Subfolder'
+                                  : hasAnswersInName
+                                    ? 'Includes Answer Keys'
+                                    : 'Past-question pack'}
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            loading={isImporting}
+                            disabled={driveImportingId !== null && !isImporting}
+                            onClick={() => void handleImportDriveEntry(entry)}
+                          >
+                            <span>
+                              {entry.isFolder
+                                ? 'Open Folder'
+                                : isImporting
+                                  ? 'Converting...'
+                                  : 'Convert to .txt'}
+                            </span>
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

@@ -112,3 +112,27 @@ export interface QuestionBankItem {
   updated_at: string;
   options: QuestionBankOptionRecord[];
 }
+
+export interface DriveFolderEntry {
+  id: string;
+  title: string;
+  isFolder: boolean;
+}
+
+export interface DriveListRequest {
+  urlOrId: string;
+}
+
+export interface DriveListResponse {
+  ok: true;
+  sourceType: 'folder' | 'file';
+  driveId: string;
+  folderTitle: string;
+  entries: DriveFolderEntry[];
+}
+
+export interface DriveImportRequest {
+  fileId: string;
+  fileName?: string;
+}
+

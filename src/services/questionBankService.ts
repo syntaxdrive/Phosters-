@@ -3,6 +3,9 @@ import type {
   ConvertDocumentRequest,
   ConvertDocumentResponse,
   DocumentSourceFormat,
+  DriveImportRequest,
+  DriveListRequest,
+  DriveListResponse,
   OcrPdfRequest,
   OcrPdfResponse,
   ParseChunkRequest,
@@ -101,8 +104,8 @@ export function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export function splitTextClientChunks(rawText: string, maxChars = 11000): string[] {
-  const normalized = rawText.replace(/\r\n?/g, '\n').trim();
+function splitSectionClientChunks(rawSection: string, maxChars: number): string[] {
+  const normalized = rawSection.replace(/\r\n?/g, '\n').trim();
   if (!normalized) return [];
   if (normalized.length <= maxChars) return [normalized];
 
@@ -150,6 +153,52 @@ export function splitTextClientChunks(rawText: string, maxChars = 11000): string
   }
   if (current.trim()) chunks.push(current.trim());
   return chunks;
+}
+
+const CLIENT_YEAR_SECTION_SPLIT_REGEX =
+  /\n(?=(?:---\s*PAGE\s+\d+\s*---\s*\n)?(?:UTME\s+(?:19[7-9]\d|20[0-3]\d)|(?:Use\s+of\s+English|English(?:\s+Language)?|Mathematics|Physics|Chemistry|Biology|Economics|Government|Commerce|CRK|Literature(?:-In-English)?|Principles\s+of\s+Accounts)\s+(?:19[7-9]\d|20[0-3]\d)|={3}\s*(?:19[7-9]\d|20[0-3]\d)\s*={3}))/i;
+
+export function splitTextClientChunks(rawText: string, maxChars = 11000): string[] {
+  const normalized = rawText.replace(/\r\n?/g, '\n').trim();
+  if (!normalized) return [];
+  if (normalized.length <= maxChars) return [normalized];
+
+  const yearSections = normalized
+    .split(CLIENT_YEAR_SECTION_SPLIT_REGEX)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (yearSections.length <= 1) {
+    return splitSectionClientChunks(normalized, maxChars);
+  }
+
+  const allChunks: string[] = [];
+  for (const section of yearSections) {
+    const keyMatch = section.match(
+      /(?:^|\n)\s*(?:ANSWER(?:S)?\s*KEY(?:S)?\s*:?[\s\S]*)$/i
+    );
+    const answerKeyBlock = keyMatch ? keyMatch[0].trim() : '';
+
+    if (
+      answerKeyBlock &&
+      answerKeyBlock.length < 3200 &&
+      section.length > maxChars
+    ) {
+      const bodyWithoutKey = section
+        .slice(0, keyMatch?.index ?? section.length)
+        .trim();
+      const keySuffix = `\n\n--- REFERENCE ANSWER KEY FOR THIS YEAR SECTION ---\n${answerKeyBlock}`;
+      const effectiveMax = Math.max(4500, maxChars - keySuffix.length);
+      const bodyChunks = splitSectionClientChunks(bodyWithoutKey, effectiveMax);
+      for (const chunk of bodyChunks) {
+        allChunks.push(`${chunk}${keySuffix}`.trim());
+      }
+    } else {
+      allChunks.push(...splitSectionClientChunks(section, maxChars));
+    }
+  }
+
+  return allChunks.filter(Boolean);
 }
 
 export function estimateClientQuestionCount(text: string): number {
@@ -228,6 +277,71 @@ export async function ocrPdfFile(
     return {
       result: null,
       error: err instanceof Error ? err.message : 'Unable to reach OCR endpoint.',
+    };
+  }
+}
+
+export async function listPublicDriveFolder(
+  urlOrId: string
+): Promise<{ result: DriveListResponse | null; error: string | null }> {
+  const token = await getAccessToken();
+  if (!token) {
+    return { result: null, error: 'You must be signed in as Super Admin.' };
+  }
+
+  try {
+    const payload: DriveListRequest = { urlOrId };
+    const res = await fetch('/api/question-bank/drive-list', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const parsed = await parseApiJson<DriveListResponse>(
+      res,
+      'Failed to read public Google Drive link.'
+    );
+    return { result: parsed.data, error: parsed.error };
+  } catch (err) {
+    return {
+      result: null,
+      error: err instanceof Error ? err.message : 'Unable to reach Google Drive importer.',
+    };
+  }
+}
+
+export async function importPublicDriveFile(
+  fileId: string,
+  fileName?: string
+): Promise<{ result: ConvertDocumentResponse | null; error: string | null }> {
+  const token = await getAccessToken();
+  if (!token) {
+    return { result: null, error: 'You must be signed in as Super Admin.' };
+  }
+
+  try {
+    const payload: DriveImportRequest = { fileId, fileName };
+    const res = await fetch('/api/question-bank/drive-import', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const parsed = await parseApiJson<ConvertDocumentResponse>(
+      res,
+      'Failed to download and convert the Google Drive file.'
+    );
+    return { result: parsed.data, error: parsed.error };
+  } catch (err) {
+    return {
+      result: null,
+      error: err instanceof Error ? err.message : 'Unable to reach Google Drive importer.',
     };
   }
 }
