@@ -1,4 +1,8 @@
 import { supabase } from '../lib/supabase';
+import {
+  OFFICIAL_JAMB_SUBJECTS,
+  findMatchingSubject,
+} from '../lib/jambSubjects';
 import { isSafeExternalHttpUrl, validateMaterialUrl } from '../lib/materialLinks';
 import { isValidYouTubeUrl } from '../lib/youtube';
 import type {
@@ -230,6 +234,147 @@ export async function deleteExamSubject(id: string): Promise<{ error: string | n
   if (!supabase) return { error: 'Supabase is not configured.' };
   const { error } = await supabase.from('exam_subjects').delete().eq('id', id);
   return { error: error ? mapAdminError(error) : null };
+}
+
+export async function syncOfficialJambSubjects(): Promise<{
+  subjectsCreated: number;
+  linksCreated: number;
+  totalOfficialCount: number;
+  error: string | null;
+}> {
+  if (!supabase) {
+    return {
+      subjectsCreated: 0,
+      linksCreated: 0,
+      totalOfficialCount: OFFICIAL_JAMB_SUBJECTS.length,
+      error: 'Supabase is not configured.',
+    };
+  }
+
+  const [examsRes, subjectsRes] = await Promise.all([
+    supabase
+      .from('exams')
+      .select('id, slug')
+      .in('slug', ['jamb-utme', 'ui-post-utme']),
+    supabase
+      .from('subjects')
+      .select('id, name, slug, description, is_active, created_at'),
+  ]);
+
+  if (examsRes.error || subjectsRes.error) {
+    return {
+      subjectsCreated: 0,
+      linksCreated: 0,
+      totalOfficialCount: OFFICIAL_JAMB_SUBJECTS.length,
+      error: mapAdminError(examsRes.error || subjectsRes.error),
+    };
+  }
+
+  let allSubjects = (subjectsRes.data ?? []) as Subject[];
+  const missingSpecs = OFFICIAL_JAMB_SUBJECTS.filter(
+    (spec) => !findMatchingSubject(spec, allSubjects)
+  );
+
+  let subjectsCreated = 0;
+  if (missingSpecs.length > 0) {
+    const insertPayload = missingSpecs.map((spec) => ({
+      name: spec.name,
+      slug: spec.slug,
+      description: spec.description,
+      is_active: true,
+    }));
+
+    const { data: insertedRows, error: insertError } = await supabase
+      .from('subjects')
+      .insert(insertPayload)
+      .select('id, name, slug, description, is_active, created_at');
+
+    if (insertError) {
+      return {
+        subjectsCreated: 0,
+        linksCreated: 0,
+        totalOfficialCount: OFFICIAL_JAMB_SUBJECTS.length,
+        error: mapAdminError(insertError),
+      };
+    }
+
+    const created = (insertedRows ?? []) as Subject[];
+    subjectsCreated = created.length;
+    allSubjects = [...allSubjects, ...created];
+  }
+
+  const targetExams = (examsRes.data ?? []) as Array<{ id: string; slug: string }>;
+  let linksCreated = 0;
+
+  if (targetExams.length > 0) {
+    const examIds = targetExams.map((e) => e.id);
+    const { data: existingLinks, error: linksError } = await supabase
+      .from('exam_subjects')
+      .select('exam_id, subject_id')
+      .in('exam_id', examIds);
+
+    if (linksError) {
+      return {
+        subjectsCreated,
+        linksCreated: 0,
+        totalOfficialCount: OFFICIAL_JAMB_SUBJECTS.length,
+        error: mapAdminError(linksError),
+      };
+    }
+
+    const existingPairs = new Set(
+      (existingLinks ?? []).map((row) => `${row.exam_id}:${row.subject_id}`)
+    );
+
+    const newLinks: Array<{
+      exam_id: string;
+      subject_id: string;
+      is_active: boolean;
+      is_compulsory: boolean;
+      display_order: number;
+    }> = [];
+
+    for (const exam of targetExams) {
+      for (const spec of OFFICIAL_JAMB_SUBJECTS) {
+        const matched = findMatchingSubject(spec, allSubjects);
+        if (!matched) continue;
+        const pairKey = `${exam.id}:${matched.id}`;
+        if (existingPairs.has(pairKey)) continue;
+        existingPairs.add(pairKey);
+
+        newLinks.push({
+          exam_id: exam.id,
+          subject_id: matched.id,
+          is_active: true,
+          is_compulsory: exam.slug === 'jamb-utme' && Boolean(spec.isCompulsoryInJamb),
+          display_order: spec.displayOrder,
+        });
+      }
+    }
+
+    if (newLinks.length > 0) {
+      const { error: linkInsertError } = await supabase
+        .from('exam_subjects')
+        .insert(newLinks);
+
+      if (linkInsertError) {
+        return {
+          subjectsCreated,
+          linksCreated: 0,
+          totalOfficialCount: OFFICIAL_JAMB_SUBJECTS.length,
+          error: mapAdminError(linkInsertError),
+        };
+      }
+      linksCreated = newLinks.length;
+    }
+  }
+
+  return {
+    subjectsCreated,
+    linksCreated,
+    totalOfficialCount: OFFICIAL_JAMB_SUBJECTS.length,
+    error: null,
+  };
 }
 
 // ============================================================================

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, Copy } from 'lucide-react';
+import { ArrowLeft, Check, Copy, Search } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import {
   fetchActiveExamsWithSubjects,
@@ -33,6 +33,7 @@ export function ExamSetupPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [subjectSearchByExam, setSubjectSearchByExam] = useState<Record<string, string>>({});
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -351,51 +352,93 @@ export function ExamSetupPage() {
                         No subjects have been configured for this examination yet.
                       </p>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        {exam.availableSubjects.map((opt) => {
-                          const checked = draft.subjectIds.includes(opt.subjectId);
-                          return (
-                            <button
-                              key={opt.examSubjectId}
-                              type="button"
-                              disabled={opt.isCompulsory}
-                              onClick={() =>
-                                toggleSubject(exam, opt.subjectId, opt.isCompulsory)
+                      <>
+                        {exam.availableSubjects.length > 10 && (
+                          <div className="relative">
+                            <Search
+                              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400"
+                              aria-hidden="true"
+                            />
+                            <input
+                              type="search"
+                              value={subjectSearchByExam[exam.id] ?? ''}
+                              onChange={(e) =>
+                                setSubjectSearchByExam((prev) => ({
+                                  ...prev,
+                                  [exam.id]: e.target.value,
+                                }))
                               }
-                              aria-pressed={checked}
-                              className={[
-                                'flex items-center justify-between gap-3 min-h-[48px] px-3.5 py-2.5 rounded-lg border text-left transition-colors',
-                                opt.isCompulsory ? 'cursor-default' : 'cursor-pointer',
-                                checked
-                                  ? 'bg-phosters-50 dark:bg-phosters-900/40 border-phosters-600 dark:border-phosters-500 text-slate-900 dark:text-slate-100'
-                                  : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800',
-                              ].join(' ')}
-                            >
-                              <div className="min-w-0">
-                                <span className="block text-sm font-medium truncate">
-                                  {opt.subject.name}
-                                </span>
-                                {opt.isCompulsory && (
-                                  <span className="block text-xs text-phosters-700 dark:text-phosters-400">
-                                    Compulsory
-                                  </span>
-                                )}
-                              </div>
-                              <span
-                                aria-hidden="true"
-                                className={[
-                                  'h-5 w-5 rounded border flex items-center justify-center shrink-0',
-                                  checked
-                                    ? 'bg-phosters-600 border-phosters-600 text-white'
-                                    : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800',
-                                ].join(' ')}
-                              >
-                                {checked && <Check className="h-3.5 w-3.5" />}
-                              </span>
-                            </button>
+                              placeholder={`Search ${exam.availableSubjects.length} subjects (e.g. Further Mathematics, Computer Studies)...`}
+                              aria-label={`Search subjects for ${exam.name}`}
+                              className="w-full min-h-[44px] pl-9 pr-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-phosters-600"
+                            />
+                          </div>
+                        )}
+                        {(() => {
+                          const q = (subjectSearchByExam[exam.id] ?? '').trim().toLowerCase();
+                          const visibleSubjects = q
+                            ? exam.availableSubjects.filter((opt) =>
+                                opt.subject.name.toLowerCase().includes(q)
+                              )
+                            : exam.availableSubjects;
+
+                          if (visibleSubjects.length === 0) {
+                            return (
+                              <p className="text-sm text-slate-500 dark:text-slate-400 py-2">
+                                No subjects match &ldquo;{subjectSearchByExam[exam.id]}&rdquo;.
+                              </p>
+                            );
+                          }
+
+                          return (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              {visibleSubjects.map((opt) => {
+                                const checked = draft.subjectIds.includes(opt.subjectId);
+                                return (
+                                  <button
+                                    key={opt.examSubjectId}
+                                    type="button"
+                                    disabled={opt.isCompulsory}
+                                    onClick={() =>
+                                      toggleSubject(exam, opt.subjectId, opt.isCompulsory)
+                                    }
+                                    aria-pressed={checked}
+                                    className={[
+                                      'flex items-center justify-between gap-3 min-h-[48px] px-3.5 py-2.5 rounded-lg border text-left transition-colors',
+                                      opt.isCompulsory ? 'cursor-default' : 'cursor-pointer',
+                                      checked
+                                        ? 'bg-phosters-50 dark:bg-phosters-900/40 border-phosters-600 dark:border-phosters-500 text-slate-900 dark:text-slate-100'
+                                        : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800',
+                                    ].join(' ')}
+                                  >
+                                    <div className="min-w-0">
+                                      <span className="block text-sm font-medium truncate">
+                                        {opt.subject.name}
+                                      </span>
+                                      {opt.isCompulsory && (
+                                        <span className="block text-xs text-phosters-700 dark:text-phosters-400">
+                                          Compulsory
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span
+                                      aria-hidden="true"
+                                      className={[
+                                        'h-5 w-5 rounded border flex items-center justify-center shrink-0',
+                                        checked
+                                          ? 'bg-phosters-600 border-phosters-600 text-white'
+                                          : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800',
+                                      ].join(' ')}
+                                    >
+                                      {checked && <Check className="h-3.5 w-3.5" />}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
                           );
-                        })}
-                      </div>
+                        })()}
+                      </>
                     )}
                   </div>
                 </div>

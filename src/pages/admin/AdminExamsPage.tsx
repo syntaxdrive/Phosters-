@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { isSuperAdminUser } from '../../lib/superAdmin';
+import { getMissingOfficialJambSubjects } from '../../lib/jambSubjects';
 import {
   deleteExamSubject,
   fetchAllExams,
   fetchAllSubjects,
   fetchExamSubjects,
   saveExam,
+  syncOfficialJambSubjects,
   upsertExamSubject,
 } from '../../services/adminService';
 import { slugify } from '../../lib/slug';
@@ -44,6 +46,7 @@ export function AdminExamsPage() {
   // Add subject mapping state
   const [subjectToAdd, setSubjectToAdd] = useState('');
   const [addingMapping, setAddingMapping] = useState(false);
+  const [syncingJamb, setSyncingJamb] = useState(false);
 
   const loadBaseData = useCallback(async () => {
     setLoading(true);
@@ -212,6 +215,34 @@ export function AdminExamsPage() {
     await loadMappings(selectedExamId);
   }
 
+  async function handleSyncJambSubjects() {
+    setActionError(null);
+    setActionSuccess(null);
+    setSyncingJamb(true);
+    const res = await syncOfficialJambSubjects();
+    setSyncingJamb(false);
+
+    if (res.error) {
+      setActionError(res.error);
+      return;
+    }
+
+    setActionSuccess(
+      res.subjectsCreated === 0 && res.linksCreated === 0
+        ? `All ${res.totalOfficialCount} official JAMB subjects are already linked.`
+        : `Synced official JAMB subjects: ${res.subjectsCreated} subject(s) added and ${res.linksCreated} exam link(s) created.`
+    );
+    await loadBaseData();
+    if (selectedExamId) {
+      await loadMappings(selectedExamId);
+    }
+  }
+
+  const missingOfficialCount = useMemo(
+    () => getMissingOfficialJambSubjects(subjects).length,
+    [subjects]
+  );
+
   if (loading) return <LoadingState message="Loading examinations..." />;
   if (error) return <ErrorState message={error} onRetry={() => void loadBaseData()} />;
 
@@ -219,6 +250,8 @@ export function AdminExamsPage() {
   const mappedSubjectIds = new Set(examSubjects.map((es) => es.subject_id));
   const unmappedSubjects = subjects.filter((s) => !mappedSubjectIds.has(s.id));
   const selectedExam = exams.find((e) => e.id === selectedExamId);
+  const isJambOrUiExam =
+    selectedExam?.slug === 'jamb-utme' || selectedExam?.slug === 'ui-post-utme';
 
   return (
     <div className="space-y-6">
@@ -356,26 +389,43 @@ export function AdminExamsPage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                  Subject options {selectedExam ? `for ${selectedExam.name}` : ''}
+                  Subject options {selectedExam ? `for ${selectedExam.name}` : ''}{' '}
+                  <span className="text-xs font-normal text-slate-500 dark:text-slate-400 tabular-nums">
+                    ({examSubjects.length} configured)
+                  </span>
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   Configure which subjects students can choose under this examination.
                 </p>
               </div>
-              {exams.length > 1 && (
-                <select
-                  aria-label="Select examination"
-                  value={selectedExamId}
-                  onChange={(e) => setSelectedExamId(e.target.value)}
-                  className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
-                >
-                  {exams.map((ex) => (
-                    <option key={ex.id} value={ex.id}>
-                      {ex.name}
-                    </option>
-                  ))}
-                </select>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {isJambOrUiExam && (missingOfficialCount > 0 || examSubjects.length < 26) && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    loading={syncingJamb}
+                    onClick={() => void handleSyncJambSubjects()}
+                    className="whitespace-nowrap shrink-0"
+                  >
+                    <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                    <span>Sync All JAMB Subjects</span>
+                  </Button>
+                )}
+                {exams.length > 1 && (
+                  <select
+                    aria-label="Select examination"
+                    value={selectedExamId}
+                    onChange={(e) => setSelectedExamId(e.target.value)}
+                    className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
+                  >
+                    {exams.map((ex) => (
+                      <option key={ex.id} value={ex.id}>
+                        {ex.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
             </div>
 
             {unmappedSubjects.length > 0 && selectedExamId && (

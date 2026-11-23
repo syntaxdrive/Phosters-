@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { RefreshCw, Search } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { isSuperAdminUser } from '../../lib/superAdmin';
-import { fetchAllSubjects, saveSubject } from '../../services/adminService';
+import {
+  OFFICIAL_JAMB_SUBJECTS,
+  getMissingOfficialJambSubjects,
+} from '../../lib/jambSubjects';
+import {
+  fetchAllSubjects,
+  saveSubject,
+  syncOfficialJambSubjects,
+} from '../../services/adminService';
 import { slugify } from '../../lib/slug';
 import type { Subject } from '../../types/database';
 import { AdminNav } from '../../components/admin/AdminNav';
@@ -27,6 +36,8 @@ export function AdminSubjectsPage() {
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [syncingJamb, setSyncingJamb] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const loadSubjects = useCallback(async () => {
     setLoading(true);
@@ -100,6 +111,46 @@ export function AdminSubjectsPage() {
     await loadSubjects();
   }
 
+  async function handleSyncOfficialJamb() {
+    setFormError(null);
+    setFormSuccess(null);
+    setSyncingJamb(true);
+    const res = await syncOfficialJambSubjects();
+    setSyncingJamb(false);
+
+    if (res.error) {
+      setFormError(res.error);
+      return;
+    }
+
+    if (res.subjectsCreated === 0 && res.linksCreated === 0) {
+      setFormSuccess(
+        `All ${res.totalOfficialCount} official JAMB UTME subjects are already added and linked to JAMB UTME & UI Post-UTME.`
+      );
+    } else {
+      setFormSuccess(
+        `Synced official JAMB UTME subjects: ${res.subjectsCreated} subject(s) added and ${res.linksCreated} examination mapping(s) linked.`
+      );
+    }
+    await loadSubjects();
+  }
+
+  const missingOfficial = useMemo(
+    () => getMissingOfficialJambSubjects(subjects),
+    [subjects]
+  );
+
+  const filteredSubjects = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return subjects;
+    return subjects.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.slug.toLowerCase().includes(q) ||
+        (s.description ?? '').toLowerCase().includes(q)
+    );
+  }, [subjects, searchQuery]);
+
   if (loading) return <LoadingState message="Loading subjects..." />;
   if (error) return <ErrorState message={error} onRetry={() => void loadSubjects()} />;
 
@@ -122,6 +173,42 @@ export function AdminSubjectsPage() {
 
       {formError && <Alert tone="error">{formError}</Alert>}
       {formSuccess && <Alert tone="success">{formSuccess}</Alert>}
+
+      {isSuperAdmin && missingOfficial.length > 0 && (
+        <Card
+          padding="md"
+          className="border-phosters-200 dark:border-phosters-800/80 bg-phosters-50/40 dark:bg-phosters-950/30"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1 min-w-0">
+              <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                {missingOfficial.length} official JAMB UTME subject
+                {missingOfficial.length === 1 ? ' is' : 's are'} missing
+              </p>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Missing:{' '}
+                {missingOfficial
+                  .slice(0, 6)
+                  .map((s) => s.name)
+                  .join(', ')}
+                {missingOfficial.length > 6
+                  ? `, and ${missingOfficial.length - 6} more`
+                  : ''}
+                . Syncing adds all {OFFICIAL_JAMB_SUBJECTS.length} official JAMB UTME subjects and links them to JAMB UTME &amp; UI Post-UTME automatically.
+              </p>
+            </div>
+            <Button
+              type="button"
+              loading={syncingJamb}
+              onClick={() => void handleSyncOfficialJamb()}
+              className="shrink-0 whitespace-nowrap"
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              <span>Add All Missing JAMB Subjects</span>
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {isSuperAdmin && (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -197,29 +284,70 @@ export function AdminSubjectsPage() {
 
         <div className="lg:col-span-7">
           <Card padding="none" className="overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">All subjects</h2>
-              <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">{subjects.length} total</span>
-            </div>
-            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-              {subjects.map((subj) => (
-                <li
-                  key={subj.id}
-                  className="px-5 py-3.5 flex items-center justify-between gap-4"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{subj.name}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                      {subj.slug} · {subj.is_active ? 'Active' : 'Hidden'}
-                      {subj.description ? ` · ${subj.description}` : ''}
-                    </p>
-                  </div>
-                  <Button variant="secondary" onClick={() => startEdit(subj)}>
-                    Edit
+            <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">All subjects</h2>
+                <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                  {filteredSubjects.length === subjects.length
+                    ? `${subjects.length} total`
+                    : `${filteredSubjects.length} of ${subjects.length}`}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {missingOfficial.length === 0 && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    loading={syncingJamb}
+                    onClick={() => void handleSyncOfficialJamb()}
+                    className="whitespace-nowrap shrink-0"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>Verify Exam Links</span>
                   </Button>
-                </li>
-              ))}
-            </ul>
+                )}
+                <div className="relative w-full sm:w-56">
+                  <Search
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400"
+                    aria-hidden="true"
+                  />
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Filter subjects..."
+                    aria-label="Filter subjects"
+                    className="w-full min-h-[40px] pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-phosters-600"
+                  />
+                </div>
+              </div>
+            </div>
+            {filteredSubjects.length === 0 ? (
+              <p className="px-5 py-6 text-sm text-slate-500 dark:text-slate-400">
+                No subjects match "{searchQuery}".
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                {filteredSubjects.map((subj) => (
+                  <li
+                    key={subj.id}
+                    className="px-5 py-3.5 flex items-center justify-between gap-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{subj.name}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                        {subj.slug} · {subj.is_active ? 'Active' : 'Hidden'}
+                        {subj.description ? ` · ${subj.description}` : ''}
+                      </p>
+                    </div>
+                    <Button variant="secondary" onClick={() => startEdit(subj)}>
+                      Edit
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
         </div>
       </div>

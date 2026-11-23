@@ -51,6 +51,7 @@ export function AdminAccountsPage() {
   // Subject assignment editor state
   const [editingSubjectsUserId, setEditingSubjectsUserId] = useState<string | null>(null);
   const [draftSubjectIds, setDraftSubjectIds] = useState<string[]>([]);
+  const [subjectFilter, setSubjectFilter] = useState('');
   const [savingSubjects, setSavingSubjects] = useState(false);
 
   const [notice, setNotice] = useState<{
@@ -119,6 +120,7 @@ export function AdminAccountsPage() {
     }
     setEditingSubjectsUserId(account.userId);
     setDraftSubjectIds(account.assignedSubjectIds);
+    setSubjectFilter('');
   }
 
   function toggleDraftSubject(subjectId: string) {
@@ -545,8 +547,30 @@ export function AdminAccountsPage() {
                             </div>
                           </div>
 
+                          {subjects.length > 12 && (
+                            <div className="relative">
+                              <Search
+                                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400"
+                                aria-hidden="true"
+                              />
+                              <input
+                                type="search"
+                                value={subjectFilter}
+                                onChange={(e) => setSubjectFilter(e.target.value)}
+                                placeholder="Filter subjects (e.g. Further Mathematics)..."
+                                aria-label="Filter subjects to assign"
+                                className="w-full min-h-[40px] pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-phosters-600"
+                              />
+                            </div>
+                          )}
+
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                            {subjects.map((subj) => {
+                            {subjects
+                              .filter((subj) => {
+                                const q = subjectFilter.trim().toLowerCase();
+                                return !q || subj.name.toLowerCase().includes(q);
+                              })
+                              .map((subj) => {
                               const checked = draftSubjectIds.includes(subj.id);
                               return (
                                 <label
