@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 import {
   deleteLesson,
   fetchAdminLessonsList,
   updateLessonOrder,
   updateLessonPublished,
 } from '../../services/adminService';
+import {
+  fetchMyTutorSubjectScope,
+  filterSubjectsByTutorScope,
+} from '../../services/tutorScopeService';
 import type { AdminLessonListItem } from '../../types/admin';
 import type { Exam, Subject, Topic } from '../../types/database';
 import { AdminNav } from '../../components/admin/AdminNav';
@@ -16,10 +21,12 @@ import { Card } from '../../components/ui/Card';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/States';
 
 export function AdminLessonsPage() {
+  const { user, profile } = useAuth();
   const [lessons, setLessons] = useState<AdminLessonListItem[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [noSubjectsAssigned, setNoSubjectsAssigned] = useState(false);
 
   const [filterExamId, setFilterExamId] = useState('all');
   const [filterSubjectId, setFilterSubjectId] = useState('all');
@@ -33,19 +40,34 @@ export function AdminLessonsPage() {
   const loadLessons = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const res = await fetchAdminLessonsList();
+    const [res, scope] = await Promise.all([
+      fetchAdminLessonsList(),
+      fetchMyTutorSubjectScope(user?.email, profile?.role),
+    ]);
     if (res.error) {
       setError(res.error);
       setLoading(false);
       return;
     }
 
-    setLessons(res.lessons);
+    const scopedSubjects = filterSubjectsByTutorScope(
+      res.subjects,
+      scope.assignedSubjectIds
+    );
+    const allowedSet =
+      scope.assignedSubjectIds !== null ? new Set(scope.assignedSubjectIds) : null;
+
+    setLessons(
+      allowedSet ? res.lessons.filter((l) => allowedSet.has(l.subjectId)) : res.lessons
+    );
     setExams(res.exams);
-    setSubjects(res.subjects);
-    setTopics(res.topics);
+    setSubjects(scopedSubjects);
+    setTopics(
+      allowedSet ? res.topics.filter((t) => allowedSet.has(t.subject_id)) : res.topics
+    );
+    setNoSubjectsAssigned(!scope.isSuperAdmin && scopedSubjects.length === 0);
     setLoading(false);
-  }, []);
+  }, [profile?.role, user?.email]);
 
   useEffect(() => {
     void loadLessons();
@@ -119,6 +141,12 @@ export function AdminLessonsPage() {
       </div>
 
       <AdminNav />
+
+      {noSubjectsAssigned && (
+        <Alert tone="warning" title="No subjects assigned to your Tutor account">
+          Ask Super Admin (<code className="font-mono text-xs">oyasordaniel@gmail.com</code>) to assign one or more subjects to your account before creating lessons.
+        </Alert>
+      )}
 
       {actionError && <Alert tone="error">{actionError}</Alert>}
 

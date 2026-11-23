@@ -2,7 +2,18 @@ import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { isSuperAdminUser } from '../../lib/superAdmin';
 
-const baseAdminLinks = [
+const tutorLinks = [
+  { to: '/admin', label: 'Overview', end: true },
+  { to: '/admin/students', label: 'Students', end: false },
+  { to: '/admin/announcements', label: 'Announcements', end: false },
+  { to: '/admin/topics', label: 'Topics', end: false },
+  { to: '/admin/lessons', label: 'Lessons', end: false },
+  { to: '/admin/tests', label: 'Tests', end: false },
+  { to: '/admin/mocks', label: 'Mock Exams', end: false },
+  { to: '/admin/guide', label: 'Tutor Guide', end: false },
+];
+
+const superAdminLinks = [
   { to: '/admin', label: 'Overview', end: true },
   { to: '/admin/students', label: 'Students', end: false },
   { to: '/admin/announcements', label: 'Announcements', end: false },
@@ -12,19 +23,15 @@ const baseAdminLinks = [
   { to: '/admin/lessons', label: 'Lessons', end: false },
   { to: '/admin/tests', label: 'Tests', end: false },
   { to: '/admin/mocks', label: 'Mock Exams', end: false },
+  { to: '/admin/question-bank', label: 'Question Bank', end: false },
+  { to: '/admin/accounts', label: 'Tutor Access', end: false },
   { to: '/admin/guide', label: 'Tutor Guide', end: false },
 ];
 
 export function AdminNav() {
   const { user, profile } = useAuth();
   const isSuperAdmin = isSuperAdminUser(user?.email, profile?.role);
-  const adminLinks = isSuperAdmin
-    ? [
-        ...baseAdminLinks,
-        { to: '/admin/question-bank', label: 'Question Bank', end: false },
-        { to: '/admin/accounts', label: 'Tutor Access', end: false },
-      ]
-    : baseAdminLinks;
+  const adminLinks = isSuperAdmin ? superAdminLinks : tutorLinks;
 
   return (
     <nav

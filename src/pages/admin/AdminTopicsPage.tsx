@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { MessageSquare, MessageSquareOff, Trash2 } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 import {
   deleteTopic,
   fetchAllExams,
@@ -9,6 +10,10 @@ import {
   updateTopicCommentsEnabled,
   updateTopicPublished,
 } from '../../services/adminService';
+import {
+  fetchMyTutorSubjectScope,
+  filterSubjectsByTutorScope,
+} from '../../services/tutorScopeService';
 import type { Exam, Subject, Topic } from '../../types/database';
 import { AdminNav } from '../../components/admin/AdminNav';
 import { TopicCommentsSection } from '../../components/social/TopicCommentsSection';
@@ -19,9 +24,12 @@ import { Input } from '../../components/ui/Input';
 import { ErrorState, LoadingState } from '../../components/ui/States';
 
 export function AdminTopicsPage() {
+  const { user, profile } = useAuth();
   const [exams, setExams] = useState<Exam[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [assignedSubjectIds, setAssignedSubjectIds] = useState<string[] | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   const [filterExamId, setFilterExamId] = useState<string>('all');
   const [filterSubjectId, setFilterSubjectId] = useState<string>('all');
@@ -49,10 +57,11 @@ export function AdminTopicsPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [examsRes, subjectsRes, topicsRes] = await Promise.all([
+    const [examsRes, subjectsRes, topicsRes, scope] = await Promise.all([
       fetchAllExams(),
       fetchAllSubjects(),
       fetchAllTopics(),
+      fetchMyTutorSubjectScope(user?.email, profile?.role),
     ]);
 
     const err = examsRes.error || subjectsRes.error || topicsRes.error;
@@ -62,19 +71,32 @@ export function AdminTopicsPage() {
       return;
     }
 
+    const scopedSubjects = filterSubjectsByTutorScope(
+      subjectsRes.subjects,
+      scope.assignedSubjectIds
+    );
+    const allowedSet =
+      scope.assignedSubjectIds !== null ? new Set(scope.assignedSubjectIds) : null;
+    const scopedTopics = allowedSet
+      ? topicsRes.topics.filter((t) => allowedSet.has(t.subject_id))
+      : topicsRes.topics;
+
     setExams(examsRes.exams);
-    setSubjects(subjectsRes.subjects);
-    setTopics(topicsRes.topics);
+    setSubjects(scopedSubjects);
+    setTopics(scopedTopics);
+    setAssignedSubjectIds(scope.assignedSubjectIds);
+    setIsSuperAdmin(scope.isSuperAdmin);
     setCommentsColumnAvailable(topicsRes.commentsColumnAvailable !== false);
 
     if (examsRes.exams.length > 0) {
       setExamId((prev) => prev || examsRes.exams[0].id);
     }
-    if (subjectsRes.subjects.length > 0) {
-      setSubjectId((prev) => prev || subjectsRes.subjects[0].id);
-    }
+    setSubjectId((prev) => {
+      if (prev && scopedSubjects.some((s) => s.id === prev)) return prev;
+      return scopedSubjects[0]?.id ?? '';
+    });
     setLoading(false);
-  }, []);
+  }, [profile?.role, user?.email]);
 
   useEffect(() => {
     void loadData();
@@ -210,6 +232,12 @@ export function AdminTopicsPage() {
       </div>
 
       <AdminNav />
+
+      {!isSuperAdmin && assignedSubjectIds !== null && subjects.length === 0 && (
+        <Alert tone="warning" title="No subjects assigned to your Tutor account">
+          Ask Super Admin (<code className="font-mono text-xs">oyasordaniel@gmail.com</code>) to assign one or more subjects to your account before creating topics.
+        </Alert>
+      )}
 
       {!commentsColumnAvailable && (
         <Alert tone="info" title="Social engagement migration needed">

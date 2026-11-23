@@ -11,6 +11,11 @@ import {
   type CachedReviewBundle,
   type CachedSubjectBundle,
 } from '../lib/offlineDb';
+import {
+  deriveReleaseStatus,
+  isItemCurrentlyReleased,
+  isMissingReleaseQueueColumnError,
+} from '../lib/releaseQueue';
 import { supabase } from '../lib/supabase';
 import type {
   AdminTestEditorInput,
@@ -24,6 +29,7 @@ import type {
   Lesson,
   Question,
   QuestionOption,
+  ReleaseStatus,
   Subject,
   Test,
   TestAttempt,
@@ -68,14 +74,33 @@ export async function fetchPublishedTestsForLesson(
   }
 
   try {
-    const { data, error } = await supabase
+    const nowIso = new Date().toISOString();
+    const initial = await supabase
       .from('tests')
       .select(
-        'id, title, description, topic_id, lesson_id, is_published, show_explanations_after_submission, created_at, updated_at'
+        'id, title, description, topic_id, lesson_id, is_published, release_status, scheduled_release_at, show_explanations_after_submission, created_at, updated_at'
       )
-      .eq('is_published', true)
       .or(`lesson_id.eq.${lessonId},and(topic_id.eq.${topicId},lesson_id.is.null)`)
+      .or(
+        `is_published.eq.true,release_status.eq.published,and(release_status.eq.queued,scheduled_release_at.lte.${nowIso})`
+      )
       .order('created_at', { ascending: true });
+
+    let data: Test[] | null = initial.data as Test[] | null;
+    let error = initial.error;
+
+    if (error && isMissingReleaseQueueColumnError(error)) {
+      const fallback = await supabase
+        .from('tests')
+        .select(
+          'id, title, description, topic_id, lesson_id, is_published, show_explanations_after_submission, created_at, updated_at'
+        )
+        .eq('is_published', true)
+        .or(`lesson_id.eq.${lessonId},and(topic_id.eq.${topicId},lesson_id.is.null)`)
+        .order('created_at', { ascending: true });
+      data = fallback.data as Test[] | null;
+      error = fallback.error;
+    }
 
     if (error) {
       if (isLikelyNetworkError(error)) {
@@ -87,7 +112,7 @@ export async function fetchPublishedTestsForLesson(
       return { tests: [], error: mapCbtError(error) };
     }
 
-    const tests = (data ?? []) as Test[];
+    const tests = ((data ?? []) as Test[]).filter(isItemCurrentlyReleased);
     if (studentId) {
       const key = offlineKeys.lesson(studentId, lessonId);
       const existing = await getOfflineKv<CachedLessonBundle>(key);
@@ -138,15 +163,35 @@ export async function fetchPublishedTopicTests(
   }
 
   try {
-    const { data, error } = await supabase
+    const nowIso = new Date().toISOString();
+    const initial = await supabase
       .from('tests')
       .select(
-        'id, title, description, topic_id, lesson_id, is_published, show_explanations_after_submission, created_at, updated_at'
+        'id, title, description, topic_id, lesson_id, is_published, release_status, scheduled_release_at, show_explanations_after_submission, created_at, updated_at'
       )
-      .eq('is_published', true)
       .in('topic_id', topicIds)
       .is('lesson_id', null)
+      .or(
+        `is_published.eq.true,release_status.eq.published,and(release_status.eq.queued,scheduled_release_at.lte.${nowIso})`
+      )
       .order('created_at', { ascending: true });
+
+    let data: Test[] | null = initial.data as Test[] | null;
+    let error = initial.error;
+
+    if (error && isMissingReleaseQueueColumnError(error)) {
+      const fallback = await supabase
+        .from('tests')
+        .select(
+          'id, title, description, topic_id, lesson_id, is_published, show_explanations_after_submission, created_at, updated_at'
+        )
+        .eq('is_published', true)
+        .in('topic_id', topicIds)
+        .is('lesson_id', null)
+        .order('created_at', { ascending: true });
+      data = fallback.data as Test[] | null;
+      error = fallback.error;
+    }
 
     if (error) {
       if (isLikelyNetworkError(error)) {
@@ -157,7 +202,7 @@ export async function fetchPublishedTopicTests(
       return { testsByTopic, error: mapCbtError(error) };
     }
 
-    for (const t of (data ?? []) as Test[]) {
+    for (const t of ((data ?? []) as Test[]).filter(isItemCurrentlyReleased)) {
       if (!t.topic_id) continue;
       const list = testsByTopic.get(t.topic_id) ?? [];
       list.push(t);
@@ -521,16 +566,21 @@ export async function fetchTestCourseContext(
 
 export async function fetchAdminTestsList(): Promise<{
   tests: AdminTestListItem[];
+  releaseQueueMigrationMissing: boolean;
   error: string | null;
 }> {
-  if (!supabase) return { tests: [], error: 'Supabase is not configured.' };
+  if (!supabase) {
+    return { tests: [], releaseQueueMigrationMissing: false, error: 'Supabase is not configured.' };
+  }
 
-  const [testsRes, questionsRes, topicsRes, lessonsRes, examsRes, subjectsRes] =
+  let releaseQueueMigrationMissing = false;
+
+  const [initialTestsRes, questionsRes, topicsRes, lessonsRes, examsRes, subjectsRes] =
     await Promise.all([
       supabase
         .from('tests')
         .select(
-          'id, title, description, topic_id, lesson_id, is_published, show_explanations_after_submission, created_at, updated_at'
+          'id, title, description, topic_id, lesson_id, is_published, release_status, scheduled_release_at, show_explanations_after_submission, created_at, updated_at'
         )
         .order('updated_at', { ascending: false }),
       supabase.from('questions').select('id, test_id'),
@@ -539,6 +589,18 @@ export async function fetchAdminTestsList(): Promise<{
       supabase.from('exams').select('id, name'),
       supabase.from('subjects').select('id, name'),
     ]);
+
+  let testsRes = initialTestsRes;
+  if (testsRes.error && isMissingReleaseQueueColumnError(testsRes.error)) {
+    releaseQueueMigrationMissing = true;
+    const fallback = await supabase
+      .from('tests')
+      .select(
+        'id, title, description, topic_id, lesson_id, is_published, show_explanations_after_submission, created_at, updated_at'
+      )
+      .order('updated_at', { ascending: false });
+    testsRes = fallback as typeof initialTestsRes;
+  }
 
   const firstErr =
     testsRes.error ||
@@ -549,7 +611,7 @@ export async function fetchAdminTestsList(): Promise<{
     subjectsRes.error;
 
   if (firstErr) {
-    return { tests: [], error: mapCbtError(firstErr) };
+    return { tests: [], releaseQueueMigrationMissing, error: mapCbtError(firstErr) };
   }
 
   const questionCounts = new Map<string, number>();
@@ -575,9 +637,11 @@ export async function fetchAdminTestsList(): Promise<{
 
   const items: AdminTestListItem[] = ((testsRes.data ?? []) as Test[]).map((t) => {
     let targetLabel = 'Unattached';
+    let resolvedSubjectId: string | null = null;
     if (t.lesson_id) {
       const lesson = lessonMap.get(t.lesson_id);
       const topic = lesson ? topicMap.get(lesson.topic_id) : undefined;
+      resolvedSubjectId = topic?.subject_id ?? null;
       const examName = topic ? examMap.get(topic.exam_id) : undefined;
       const subjName = topic ? subjectMap.get(topic.subject_id) : undefined;
       targetLabel = [examName, subjName, lesson?.title ? `Lesson: ${lesson.title}` : null]
@@ -585,6 +649,7 @@ export async function fetchAdminTestsList(): Promise<{
         .join(' · ');
     } else if (t.topic_id) {
       const topic = topicMap.get(t.topic_id);
+      resolvedSubjectId = topic?.subject_id ?? null;
       const examName = topic ? examMap.get(topic.exam_id) : undefined;
       const subjName = topic ? subjectMap.get(topic.subject_id) : undefined;
       targetLabel = [examName, subjName, topic?.title ? `Topic: ${topic.title}` : null]
@@ -598,7 +663,10 @@ export async function fetchAdminTestsList(): Promise<{
       description: t.description,
       topic_id: t.topic_id,
       lesson_id: t.lesson_id,
+      subjectId: resolvedSubjectId,
       is_published: t.is_published,
+      release_status: deriveReleaseStatus(t),
+      scheduled_release_at: t.scheduled_release_at ?? null,
       show_explanations_after_submission: t.show_explanations_after_submission,
       updated_at: t.updated_at,
       questionCount: questionCounts.get(t.id) ?? 0,
@@ -606,23 +674,26 @@ export async function fetchAdminTestsList(): Promise<{
     };
   });
 
-  return { tests: items, error: null };
+  return { tests: items, releaseQueueMigrationMissing, error: null };
 }
 
 export async function fetchTestForAdminEditor(testId: string): Promise<{
   test: Test | null;
   questions: Array<Question & { options: QuestionOption[] }>;
+  releaseQueueMigrationMissing: boolean;
   error: string | null;
 }> {
   if (!supabase) {
-    return { test: null, questions: [], error: 'Supabase is not configured.' };
+    return { test: null, questions: [], releaseQueueMigrationMissing: false, error: 'Supabase is not configured.' };
   }
 
-  const [testRes, questionsRes] = await Promise.all([
+  let releaseQueueMigrationMissing = false;
+
+  const [initialTestRes, questionsRes] = await Promise.all([
     supabase
       .from('tests')
       .select(
-        'id, title, description, topic_id, lesson_id, is_published, show_explanations_after_submission, created_at, updated_at'
+        'id, title, description, topic_id, lesson_id, is_published, release_status, scheduled_release_at, show_explanations_after_submission, created_at, updated_at'
       )
       .eq('id', testId)
       .maybeSingle(),
@@ -633,14 +704,27 @@ export async function fetchTestForAdminEditor(testId: string): Promise<{
       .order('display_order', { ascending: true }),
   ]);
 
+  let testRes = initialTestRes;
+  if (testRes.error && isMissingReleaseQueueColumnError(testRes.error)) {
+    releaseQueueMigrationMissing = true;
+    const fallback = await supabase
+      .from('tests')
+      .select(
+        'id, title, description, topic_id, lesson_id, is_published, show_explanations_after_submission, created_at, updated_at'
+      )
+      .eq('id', testId)
+      .maybeSingle();
+    testRes = fallback as typeof initialTestRes;
+  }
+
   if (testRes.error) {
-    return { test: null, questions: [], error: mapCbtError(testRes.error) };
+    return { test: null, questions: [], releaseQueueMigrationMissing, error: mapCbtError(testRes.error) };
   }
   if (!testRes.data) {
-    return { test: null, questions: [], error: 'Test not found.' };
+    return { test: null, questions: [], releaseQueueMigrationMissing, error: 'Test not found.' };
   }
   if (questionsRes.error) {
-    return { test: null, questions: [], error: mapCbtError(questionsRes.error) };
+    return { test: null, questions: [], releaseQueueMigrationMissing, error: mapCbtError(questionsRes.error) };
   }
 
   const questions = (questionsRes.data ?? []) as Question[];
@@ -655,7 +739,7 @@ export async function fetchTestForAdminEditor(testId: string): Promise<{
       .order('display_order', { ascending: true });
 
     if (optRes.error) {
-      return { test: null, questions: [], error: mapCbtError(optRes.error) };
+      return { test: null, questions: [], releaseQueueMigrationMissing, error: mapCbtError(optRes.error) };
     }
 
     for (const o of (optRes.data ?? []) as QuestionOption[]) {
@@ -665,19 +749,25 @@ export async function fetchTestForAdminEditor(testId: string): Promise<{
     }
   }
 
+  const rawTest = testRes.data as Test;
   return {
-    test: testRes.data as Test,
+    test: {
+      ...rawTest,
+      release_status: deriveReleaseStatus(rawTest),
+      scheduled_release_at: rawTest.scheduled_release_at ?? null,
+    },
     questions: questions.map((q) => ({
       ...q,
       options: optionsByQuestion.get(q.id) ?? [],
     })),
+    releaseQueueMigrationMissing,
     error: null,
   };
 }
 
 export async function saveAdminTest(
   input: AdminTestEditorInput
-): Promise<{ testId: string | null; error: string | null }> {
+): Promise<{ testId: string | null; warning?: string | null; error: string | null }> {
   if (!supabase) return { testId: null, error: 'Supabase is not configured.' };
 
   if (input.title.trim().length < 2) {
@@ -720,35 +810,78 @@ export async function saveAdminTest(
     }
   }
 
-  const testPayload = {
+  const releaseStatus: ReleaseStatus =
+    input.release_status ?? (input.is_published ? 'published' : 'draft');
+  const isPublished = releaseStatus === 'published';
+  const scheduledReleaseAt =
+    releaseStatus === 'queued' ? (input.scheduled_release_at ?? null) : null;
+
+  const basePayload = {
     title: input.title.trim(),
     description: input.description.trim() || null,
     topic_id: input.topic_id,
     lesson_id: input.lesson_id,
-    is_published: input.is_published,
+    is_published: isPublished,
     show_explanations_after_submission: input.show_explanations_after_submission,
   };
 
+  const fullPayload = {
+    ...basePayload,
+    release_status: releaseStatus,
+    scheduled_release_at: scheduledReleaseAt,
+  };
+
   let testId = input.id ?? null;
+  let warning: string | null = null;
 
   if (testId) {
-    const { error } = await supabase
+    let updateRes = await supabase
       .from('tests')
-      .update(testPayload)
+      .update(fullPayload)
       .eq('id', testId);
-    if (error) return { testId: null, error: mapCbtError(error) };
+
+    if (updateRes.error && isMissingReleaseQueueColumnError(updateRes.error)) {
+      if (releaseStatus === 'queued') {
+        warning =
+          'Test questions were saved as Draft. Ask Super Admin to run migrations 014a–014c to enable queuing and scheduled release.';
+      }
+      updateRes = await supabase
+        .from('tests')
+        .update(basePayload)
+        .eq('id', testId);
+    }
+
+    if (updateRes.error) return { testId: null, error: mapCbtError(updateRes.error) };
 
     // Remove previous questions (cascades to question_options) and replace cleanly
     const delRes = await supabase.from('questions').delete().eq('test_id', testId);
     if (delRes.error) return { testId, error: mapCbtError(delRes.error) };
   } else {
-    const { data, error } = await supabase
+    const insertFullRes = await supabase
       .from('tests')
-      .insert(testPayload)
+      .insert(fullPayload)
       .select('id')
       .single();
-    if (error) return { testId: null, error: mapCbtError(error) };
-    testId = data.id;
+
+    if (insertFullRes.error && isMissingReleaseQueueColumnError(insertFullRes.error)) {
+      if (releaseStatus === 'queued') {
+        warning =
+          'Test questions were saved as Draft. Ask Super Admin to run migrations 014a–014c to enable queuing and scheduled release.';
+      }
+      const fallbackRes = await supabase
+        .from('tests')
+        .insert(basePayload)
+        .select('id')
+        .single();
+      if (fallbackRes.error || !fallbackRes.data) {
+        return { testId: null, error: mapCbtError(fallbackRes.error) };
+      }
+      testId = fallbackRes.data.id;
+    } else if (insertFullRes.error || !insertFullRes.data) {
+      return { testId: null, error: mapCbtError(insertFullRes.error) };
+    } else {
+      testId = insertFullRes.data.id;
+    }
   }
 
   for (let qi = 0; qi < input.questions.length; qi++) {
@@ -783,19 +916,59 @@ export async function saveAdminTest(
     }
   }
 
-  return { testId, error: null };
+  return { testId, warning, error: null };
+}
+
+export async function updateTestReleaseStatus(
+  testId: string,
+  releaseStatus: ReleaseStatus,
+  scheduledReleaseAt?: string | null
+): Promise<{ releaseQueueMigrationMissing?: boolean; error: string | null }> {
+  if (!supabase) return { error: 'Supabase is not configured.' };
+
+  const isPublished = releaseStatus === 'published';
+  const payload = {
+    release_status: releaseStatus,
+    scheduled_release_at: releaseStatus === 'queued' ? (scheduledReleaseAt ?? null) : null,
+    is_published: isPublished,
+  };
+
+  const { error } = await supabase
+    .from('tests')
+    .update(payload)
+    .eq('id', testId);
+
+  if (error && isMissingReleaseQueueColumnError(error)) {
+    if (releaseStatus === 'queued') {
+      return {
+        releaseQueueMigrationMissing: true,
+        error:
+          'Release Queue requires database migrations 014a–014c. Ask Super Admin to run them in Supabase SQL Editor.',
+      };
+    }
+    const fallback = await supabase
+      .from('tests')
+      .update({ is_published: isPublished })
+      .eq('id', testId);
+    return {
+      releaseQueueMigrationMissing: true,
+      error: fallback.error ? mapCbtError(fallback.error) : null,
+    };
+  }
+
+  return { error: error ? mapCbtError(error) : null };
 }
 
 export async function updateTestPublished(
   testId: string,
   isPublished: boolean
 ): Promise<{ error: string | null }> {
-  if (!supabase) return { error: 'Supabase is not configured.' };
-  const { error } = await supabase
-    .from('tests')
-    .update({ is_published: isPublished })
-    .eq('id', testId);
-  return { error: error ? mapCbtError(error) : null };
+  const res = await updateTestReleaseStatus(
+    testId,
+    isPublished ? 'published' : 'draft',
+    null
+  );
+  return { error: res.error };
 }
 
 export async function deleteTest(testId: string): Promise<{ error: string | null }> {

@@ -1,3 +1,5 @@
+import type { ReleaseStatus } from './database';
+
 export type StudentTestOption = {
   id: string;
   option_key: string;
@@ -78,7 +80,10 @@ export type AdminTestListItem = {
   description: string | null;
   topic_id: string | null;
   lesson_id: string | null;
+  subjectId?: string | null;
   is_published: boolean;
+  release_status: ReleaseStatus;
+  scheduled_release_at: string | null;
   show_explanations_after_submission: boolean;
   updated_at: string;
   questionCount: number;
@@ -107,6 +112,8 @@ export type AdminTestEditorInput = {
   topic_id: string | null;
   lesson_id: string | null;
   is_published: boolean;
+  release_status?: ReleaseStatus;
+  scheduled_release_at?: string | null;
   show_explanations_after_submission: boolean;
   questions: AdminQuestionDraft[];
 };
@@ -128,6 +135,8 @@ export type MockExamRecord = {
   uses_question_bank: boolean;
   exclude_diagrams: boolean;
   is_published: boolean;
+  release_status?: ReleaseStatus;
+  scheduled_release_at?: string | null;
   show_explanations_after_submission: boolean;
   created_by: string | null;
   created_at: string;
@@ -268,6 +277,7 @@ export type AdminMockCustomQuestionInput = {
 
 export type AiGenerateQuestionsRequest = {
   examName: string;
+  subjectId?: string;
   subjectName: string;
   topicTitle?: string;
   difficulty?: 'easy' | 'medium' | 'hard' | 'mixed';

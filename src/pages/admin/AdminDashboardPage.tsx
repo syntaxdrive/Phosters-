@@ -3,9 +3,14 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, FolderGit2, PlayCircle, Plus } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { isSuperAdminUser } from '../../lib/superAdmin';
-import { fetchAdminOverviewCounts } from '../../services/adminService';
+import { fetchAdminOverviewCounts, fetchAllSubjects } from '../../services/adminService';
+import {
+  fetchMyTutorSubjectScope,
+  filterSubjectsByTutorScope,
+} from '../../services/tutorScopeService';
 import type { AdminOverviewCounts } from '../../types/admin';
 import { AdminNav } from '../../components/admin/AdminNav';
+import { Alert } from '../../components/ui/Alert';
 import { Card } from '../../components/ui/Card';
 import { ErrorState, LoadingState } from '../../components/ui/States';
 
@@ -13,25 +18,41 @@ export function AdminDashboardPage() {
   const { user, profile } = useAuth();
   const isSuperAdmin = isSuperAdminUser(user?.email, profile?.role);
   const [counts, setCounts] = useState<AdminOverviewCounts | null>(null);
+  const [assignedSubjectNames, setAssignedSubjectNames] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadCounts = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const res = await fetchAdminOverviewCounts();
+    const [res, scope, subjRes] = await Promise.all([
+      fetchAdminOverviewCounts(),
+      fetchMyTutorSubjectScope(user?.email, profile?.role),
+      fetchAllSubjects(),
+    ]);
     if (res.error) {
       setError(res.error);
       setLoading(false);
       return;
     }
+
+    if (scope.isSuperAdmin || scope.assignedSubjectIds === null) {
+      setAssignedSubjectNames(null);
+    } else {
+      const scoped = filterSubjectsByTutorScope(subjRes.subjects, scope.assignedSubjectIds);
+      setAssignedSubjectNames(scoped.map((s) => s.name));
+    }
+
     setCounts(res.counts);
     setLoading(false);
-  }, []);
+  }, [profile?.role, user?.email]);
 
   useEffect(() => {
     void loadCounts();
   }, [loadCounts]);
+
+  const noSubjectsAssigned =
+    !isSuperAdmin && assignedSubjectNames !== null && assignedSubjectNames.length === 0;
 
   return (
     <div className="space-y-6">
@@ -44,6 +65,16 @@ export function AdminDashboardPage() {
             <span>{profile?.full_name}</span>
             <span aria-hidden="true">·</span>
             <span>{user?.email}</span>
+            {!isSuperAdmin && assignedSubjectNames !== null && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="font-medium text-phosters-700 dark:text-phosters-400">
+                  {assignedSubjectNames.length > 0
+                    ? `Assigned: ${assignedSubjectNames.join(' · ')}`
+                    : 'No subjects assigned yet'}
+                </span>
+              </>
+            )}
           </div>
         </div>
 
@@ -67,20 +98,36 @@ export function AdminDashboardPage() {
 
       <AdminNav />
 
+      {noSubjectsAssigned && (
+        <Alert tone="info" title="Subject assignment pending">
+          Your Tutor account is active, but no subjects have been assigned to you yet. Ask the Super Admin (<code className="font-mono text-xs">oyasordaniel@gmail.com</code>) to assign one or more subjects under Tutor Access so you can create topics, lessons, tests, and mock questions.
+        </Alert>
+      )}
+
       {loading ? (
         <LoadingState message="Loading real database counts..." />
       ) : error ? (
         <ErrorState message={error} onRetry={() => void loadCounts()} />
       ) : counts ? (
         <section aria-label="Database counts" className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-          {[
-            { label: 'Examinations', value: counts.examsCount, to: '/admin/examinations' },
-            { label: 'Subjects', value: counts.subjectsCount, to: '/admin/subjects' },
-            { label: 'Topics', value: counts.topicsCount, to: '/admin/topics' },
-            { label: 'Published Lessons', value: counts.publishedLessonsCount, to: '/admin/lessons' },
-            { label: 'Draft Lessons', value: counts.draftLessonsCount, to: '/admin/lessons' },
-            { label: 'Students', value: counts.studentsCount, to: '/admin/students' },
-          ].map((item) => (
+          {(isSuperAdmin
+            ? [
+                { label: 'Examinations', value: counts.examsCount, to: '/admin/examinations' },
+                { label: 'Subjects', value: counts.subjectsCount, to: '/admin/subjects' },
+                { label: 'Topics', value: counts.topicsCount, to: '/admin/topics' },
+                { label: 'Published Lessons', value: counts.publishedLessonsCount, to: '/admin/lessons' },
+                { label: 'Draft Lessons', value: counts.draftLessonsCount, to: '/admin/lessons' },
+                { label: 'Students', value: counts.studentsCount, to: '/admin/students' },
+              ]
+            : [
+                { label: 'Examinations', value: counts.examsCount, to: '/admin/topics' },
+                { label: 'Assigned Subjects', value: assignedSubjectNames?.length ?? counts.subjectsCount, to: '/admin/topics' },
+                { label: 'Your Topics', value: counts.topicsCount, to: '/admin/topics' },
+                { label: 'Published Lessons', value: counts.publishedLessonsCount, to: '/admin/lessons' },
+                { label: 'Draft Lessons', value: counts.draftLessonsCount, to: '/admin/lessons' },
+                { label: 'Students', value: counts.studentsCount, to: '/admin/students' },
+              ]
+          ).map((item) => (
             <Link
               key={item.label}
               to={item.to}
@@ -99,10 +146,10 @@ export function AdminDashboardPage() {
         <Card padding="lg" className="space-y-4">
           <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">Content workflow</h2>
           <ol className="list-decimal pl-5 space-y-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            <li>Configure active examinations and their allowed subjects.</li>
-            <li>Organise each examination and subject into ordered topics.</li>
+            <li>Organise your assigned subject(s) into ordered syllabus topics.</li>
             <li>Create lessons with YouTube video links and downloadable notes.</li>
-            <li>Publish topics and lessons when ready for students.</li>
+            <li>Build practice tests or set Mock Exam questions manually or with AI.</li>
+            <li>Publish topics, lessons, and tests when ready for students.</li>
           </ol>
           <div className="pt-1 flex flex-wrap gap-3">
             <Link
@@ -124,6 +171,13 @@ export function AdminDashboardPage() {
               className="inline-flex items-center gap-1.5 min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
               <span>Manage Tests</span>
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+            <Link
+              to="/admin/mocks"
+              className="inline-flex items-center gap-1.5 min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              <span>Set Mock Questions</span>
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
             <Link
@@ -153,7 +207,7 @@ export function AdminDashboardPage() {
                   to="/admin/accounts"
                   className="inline-flex items-center gap-1.5 min-h-[44px] px-4 py-2 rounded-lg border border-phosters-200 dark:border-phosters-800 bg-phosters-50/70 dark:bg-phosters-950/40 text-sm font-semibold text-phosters-800 dark:text-phosters-300 hover:bg-phosters-100/70 dark:hover:bg-phosters-900/50 transition-colors"
                 >
-                  <span>Upgrade Tutor Accounts</span>
+                  <span>Tutor Access &amp; Subjects</span>
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </Link>
               </>

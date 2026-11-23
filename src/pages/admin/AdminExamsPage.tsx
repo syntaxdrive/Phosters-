@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
+import { isSuperAdminUser } from '../../lib/superAdmin';
 import {
   deleteExamSubject,
   fetchAllExams,
@@ -18,6 +20,9 @@ import { Input } from '../../components/ui/Input';
 import { ErrorState, LoadingState } from '../../components/ui/States';
 
 export function AdminExamsPage() {
+  const { user, profile } = useAuth();
+  const isSuperAdmin = isSuperAdminUser(user?.email, profile?.role);
+
   const [exams, setExams] = useState<Exam[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedExamId, setSelectedExamId] = useState<string>('');
@@ -226,9 +231,16 @@ export function AdminExamsPage() {
 
       <AdminNav />
 
+      {!isSuperAdmin && (
+        <Alert tone="info" title="Super Admin only">
+          Global examination setup and subject taxonomy can only be modified by the Super Admin (<code className="font-mono text-xs">oyasordaniel@gmail.com</code>).
+        </Alert>
+      )}
+
       {actionError && <Alert tone="error">{actionError}</Alert>}
       {actionSuccess && <Alert tone="success">{actionSuccess}</Alert>}
 
+      {isSuperAdmin && (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-5 space-y-4">
           <Card padding="lg">
@@ -472,6 +484,7 @@ export function AdminExamsPage() {
           </Card>
         </div>
       </div>
+      )}
     </div>
   );
 }

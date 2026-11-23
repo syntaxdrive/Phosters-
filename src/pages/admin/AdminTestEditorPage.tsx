@@ -1,16 +1,28 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowDown, ArrowLeft, ArrowUp, BellRing, BookOpenCheck, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
+import {
+  datetimeLocalToIso,
+  deriveReleaseStatus,
+  isItemCurrentlyReleased,
+  isoToDatetimeLocal,
+} from '../../lib/releaseQueue';
 import { fetchAdminLessonsList } from '../../services/adminService';
 import { fetchTestForAdminEditor, saveAdminTest } from '../../services/cbtService';
 import { generateAiQuestionsForTutor } from '../../services/mockExamService';
 import { triggerPushNotification } from '../../services/pushService';
 import { fetchApprovedBankQuestionsForTestBuilder } from '../../services/questionBankService';
+import {
+  fetchMyTutorSubjectScope,
+  filterSubjectsByTutorScope,
+} from '../../services/tutorScopeService';
 import type { AdminLessonListItem } from '../../types/admin';
 import type { AdminQuestionDraft } from '../../types/cbt';
-import type { Exam, Subject, Topic } from '../../types/database';
+import type { Exam, ReleaseStatus, Subject, Topic } from '../../types/database';
 import type { QuestionDifficulty } from '../../types/questionBank';
 import { AdminNav } from '../../components/admin/AdminNav';
+import { ReleaseQueueControl } from '../../components/admin/ReleaseQueueControl';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -39,10 +51,12 @@ function createEmptyQuestion(): AdminQuestionDraft {
 }
 
 export function AdminTestEditorPage() {
+  const { user, profile } = useAuth();
   const { testId } = useParams();
   const isEditing = Boolean(testId && testId !== 'new');
   const navigate = useNavigate();
 
+  const [noSubjectsAssigned, setNoSubjectsAssigned] = useState(false);
   const [exams, setExams] = useState<Exam[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -57,7 +71,9 @@ export function AdminTestEditorPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [showExplanations, setShowExplanations] = useState(true);
-  const [isPublished, setIsPublished] = useState(false);
+  const [releaseStatus, setReleaseStatus] = useState<ReleaseStatus>('draft');
+  const [scheduledReleaseLocal, setScheduledReleaseLocal] = useState('');
+  const [releaseQueueMigrationMissing, setReleaseQueueMigrationMissing] = useState(false);
   const [notifyOnSave, setNotifyOnSave] = useState(false);
   const [questions, setQuestions] = useState<AdminQuestionDraft[]>([createEmptyQuestion()]);
 
@@ -65,6 +81,7 @@ export function AdminTestEditorPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [saveWarning, setSaveWarning] = useState<string | null>(null);
   const [pushNotice, setPushNotice] = useState<{ tone: 'success' | 'info' | 'error'; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [sendingPush, setSendingPush] = useState(false);
@@ -91,17 +108,34 @@ export function AdminTestEditorPage() {
     setLoading(true);
     setLoadError(null);
 
-    const baseRes = await fetchAdminLessonsList();
+    const [baseRes, scope] = await Promise.all([
+      fetchAdminLessonsList(),
+      fetchMyTutorSubjectScope(user?.email, profile?.role),
+    ]);
     if (baseRes.error) {
       setLoadError(baseRes.error);
       setLoading(false);
       return;
     }
 
+    const scopedSubjects = filterSubjectsByTutorScope(
+      baseRes.subjects,
+      scope.assignedSubjectIds
+    );
+    const allowedSet =
+      scope.assignedSubjectIds !== null ? new Set(scope.assignedSubjectIds) : null;
+    const scopedTopics = allowedSet
+      ? baseRes.topics.filter((t) => allowedSet.has(t.subject_id))
+      : baseRes.topics;
+    const scopedLessons = allowedSet
+      ? baseRes.lessons.filter((l) => allowedSet.has(l.subjectId))
+      : baseRes.lessons;
+
+    setNoSubjectsAssigned(!scope.isSuperAdmin && scopedSubjects.length === 0);
     setExams(baseRes.exams);
-    setSubjects(baseRes.subjects);
-    setTopics(baseRes.topics);
-    setLessons(baseRes.lessons);
+    setSubjects(scopedSubjects);
+    setTopics(scopedTopics);
+    setLessons(scopedLessons);
 
     if (isEditing && testId) {
       const testRes = await fetchTestForAdminEditor(testId);
@@ -112,26 +146,28 @@ export function AdminTestEditorPage() {
       }
 
       const t = testRes.test;
+      setReleaseQueueMigrationMissing(testRes.releaseQueueMigrationMissing);
       setTitle(t.title);
       setDescription(t.description ?? '');
       setShowExplanations(t.show_explanations_after_submission);
-      setIsPublished(t.is_published);
+      setReleaseStatus(deriveReleaseStatus(t));
+      setScheduledReleaseLocal(isoToDatetimeLocal(t.scheduled_release_at));
 
       // Resolve placement context
       let resolvedTopic: Topic | undefined;
       if (t.lesson_id) {
         setAttachMode('lesson');
         setLessonId(t.lesson_id);
-        const matchedLesson = baseRes.lessons.find((l) => l.id === t.lesson_id);
-        resolvedTopic = baseRes.topics.find((tp) => tp.id === matchedLesson?.topic_id);
+        const matchedLesson = scopedLessons.find((l) => l.id === t.lesson_id);
+        resolvedTopic = scopedTopics.find((tp) => tp.id === matchedLesson?.topic_id);
       } else if (t.topic_id) {
         setAttachMode('topic');
-        resolvedTopic = baseRes.topics.find((tp) => tp.id === t.topic_id);
+        resolvedTopic = scopedTopics.find((tp) => tp.id === t.topic_id);
       }
 
       setTopicId(resolvedTopic?.id ?? t.topic_id ?? '');
       setSelectedExamId(resolvedTopic?.exam_id ?? baseRes.exams[0]?.id ?? '');
-      setSelectedSubjectId(resolvedTopic?.subject_id ?? baseRes.subjects[0]?.id ?? '');
+      setSelectedSubjectId(resolvedTopic?.subject_id ?? scopedSubjects[0]?.id ?? '');
 
       if (testRes.questions.length > 0) {
         setQuestions(
@@ -150,17 +186,17 @@ export function AdminTestEditorPage() {
         );
       }
     } else {
-      const firstTopic = baseRes.topics[0];
-      const firstLesson = baseRes.lessons.find((l) => l.topic_id === firstTopic?.id);
+      const firstTopic = scopedTopics[0];
+      const firstLesson = scopedLessons.find((l) => l.topic_id === firstTopic?.id);
       setSelectedExamId(firstTopic?.exam_id ?? baseRes.exams[0]?.id ?? '');
-      setSelectedSubjectId(firstTopic?.subject_id ?? baseRes.subjects[0]?.id ?? '');
+      setSelectedSubjectId(firstTopic?.subject_id ?? scopedSubjects[0]?.id ?? '');
       setTopicId(firstTopic?.id ?? '');
       setLessonId(firstLesson?.id ?? '');
       setAttachMode(firstLesson ? 'lesson' : 'topic');
     }
 
     setLoading(false);
-  }, [isEditing, testId]);
+  }, [isEditing, profile?.role, testId, user?.email]);
 
   useEffect(() => {
     void loadEditor();
@@ -253,6 +289,7 @@ export function AdminTestEditorPage() {
     e.preventDefault();
     setFormError(null);
     setSaveSuccess(null);
+    setSaveWarning(null);
     setPushNotice(null);
 
     const targetTopicId = attachMode === 'topic' ? topicId || null : null;
@@ -267,6 +304,10 @@ export function AdminTestEditorPage() {
       return;
     }
 
+    const scheduledIso =
+      releaseStatus === 'queued' ? datetimeLocalToIso(scheduledReleaseLocal) : null;
+    const isLiveNow = releaseStatus === 'published';
+
     setSaving(true);
     const res = await saveAdminTest({
       id: isEditing ? testId : undefined,
@@ -274,7 +315,9 @@ export function AdminTestEditorPage() {
       description,
       topic_id: targetTopicId,
       lesson_id: targetLessonId,
-      is_published: isPublished,
+      is_published: isLiveNow,
+      release_status: releaseStatus,
+      scheduled_release_at: scheduledIso,
       show_explanations_after_submission: showExplanations,
       questions,
     });
@@ -285,9 +328,21 @@ export function AdminTestEditorPage() {
       return;
     }
 
-    setSaveSuccess('Test and questions saved.');
+    if (res.warning) {
+      setReleaseQueueMigrationMissing(true);
+      setReleaseStatus('draft');
+      setSaveWarning(res.warning);
+    } else {
+      setSaveSuccess(
+        releaseStatus === 'queued'
+          ? 'Test saved and placed in the Release Queue.'
+          : releaseStatus === 'published'
+            ? 'Test saved and published to students.'
+            : 'Test draft saved.'
+      );
+    }
 
-    if (isPublished && notifyOnSave) {
+    if (isLiveNow && notifyOnSave) {
       setSendingPush(true);
       const pushRes = await triggerPushNotification({
         type: 'test',
@@ -309,7 +364,11 @@ export function AdminTestEditorPage() {
   }
 
   async function handleSendTestPush(onlyUnattempted: boolean) {
-    if (!testId || !isPublished) return;
+    const canNotify = isItemCurrentlyReleased({
+      release_status: releaseStatus,
+      scheduled_release_at: datetimeLocalToIso(scheduledReleaseLocal),
+    });
+    if (!testId || !canNotify) return;
     setPushNotice(null);
     setSendingPush(true);
     const pushRes = await triggerPushNotification({
@@ -440,6 +499,7 @@ export function AdminTestEditorPage() {
     setAiLoading(true);
     const res = await generateAiQuestionsForTutor({
       examName,
+      subjectId: selectedSubjectId || undefined,
       subjectName,
       topicTitle: [topicTitle, lessonTitle].filter(Boolean).join(' — '),
       difficulty: aiDifficulty,
@@ -519,7 +579,12 @@ export function AdminTestEditorPage() {
           </h1>
         </div>
 
-        {isEditing && isPublished && testId && (
+        {isEditing &&
+          isItemCurrentlyReleased({
+            release_status: releaseStatus,
+            scheduled_release_at: datetimeLocalToIso(scheduledReleaseLocal),
+          }) &&
+          testId && (
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
@@ -545,7 +610,20 @@ export function AdminTestEditorPage() {
 
       <AdminNav />
 
+      {releaseQueueMigrationMissing && (
+        <Alert tone="info" title="Enable Release Queue &amp; Scheduled Release">
+          Ask Super Admin to run <code className="font-mono text-xs">supabase/migrations/014a–014c</code> in the Supabase SQL Editor to queue or schedule tests.
+        </Alert>
+      )}
+
+      {noSubjectsAssigned && (
+        <Alert tone="warning" title="No subjects assigned to your Tutor account">
+          Ask Super Admin (<code className="font-mono text-xs">oyasordaniel@gmail.com</code>) to assign one or more subjects to your account before creating tests.
+        </Alert>
+      )}
+
       {formError && <Alert tone="error">{formError}</Alert>}
+      {saveWarning && <Alert tone="warning">{saveWarning}</Alert>}
       {saveSuccess && <Alert tone="success">{saveSuccess}</Alert>}
       {pushNotice && <Alert tone={pushNotice.tone}>{pushNotice.message}</Alert>}
 
@@ -682,8 +760,8 @@ export function AdminTestEditorPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer">
+          <div className="space-y-4 pt-1">
+            <label className="flex items-center gap-2.5 min-h-[40px] cursor-pointer">
               <input
                 type="checkbox"
                 checked={showExplanations}
@@ -695,33 +773,30 @@ export function AdminTestEditorPage() {
               </span>
             </label>
 
-            <div className="space-y-1">
-              <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer">
+            <ReleaseQueueControl
+              entityLabel="test"
+              releaseStatus={releaseStatus}
+              scheduledReleaseLocal={scheduledReleaseLocal}
+              onChangeStatus={(next) => {
+                setReleaseStatus(next);
+                if (next !== 'published') setNotifyOnSave(false);
+              }}
+              onChangeSchedule={setScheduledReleaseLocal}
+            />
+
+            {releaseStatus === 'published' && (
+              <label className="flex items-center gap-2.5 min-h-[40px] cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={isPublished}
-                  onChange={(e) => setIsPublished(e.target.checked)}
+                  checked={notifyOnSave}
+                  onChange={(e) => setNotifyOnSave(e.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600"
                 />
-                <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                  Published (students can take this test)
+                <span className="text-sm font-medium text-phosters-700 dark:text-phosters-400">
+                  Send native push notification to enrolled students when saved
                 </span>
               </label>
-
-              {isPublished && (
-                <label className="flex items-center gap-2.5 min-h-[40px] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={notifyOnSave}
-                    onChange={(e) => setNotifyOnSave(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600"
-                  />
-                  <span className="text-sm font-medium text-phosters-700 dark:text-phosters-400">
-                    Send native push notification to enrolled students when saved
-                  </span>
-                </label>
-              )}
-            </div>
+            )}
           </div>
         </Card>
 

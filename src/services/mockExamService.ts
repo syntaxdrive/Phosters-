@@ -9,6 +9,11 @@ import {
   offlineKeys,
   putOfflineKv,
 } from '../lib/offlineDb';
+import {
+  deriveReleaseStatus,
+  isItemCurrentlyReleased,
+  isMissingReleaseQueueColumnError,
+} from '../lib/releaseQueue';
 import { supabase } from '../lib/supabase';
 import type {
   AdminMockCustomQuestionInput,
@@ -23,7 +28,7 @@ import type {
   MockSubjectBreakdown,
   MockSubjectReadiness,
 } from '../types/cbt';
-import type { Exam, Subject } from '../types/database';
+import type { Exam, ReleaseStatus, Subject } from '../types/database';
 import type { StudentEnrolledExam } from '../types/learning';
 import { fetchStudentEnrollments } from './learningService';
 
@@ -162,12 +167,32 @@ export async function fetchStudentMockHub(studentId: string): Promise<StudentMoc
   const sb = supabase;
 
   try {
-    const [mocksRes, attemptsRes, ...readinessResponses] = await Promise.all([
-      sb
+    const nowIso = new Date().toISOString();
+    const fetchHubMocks = async () => {
+      const initial = await sb
         .from('mock_exams')
-        .select('*')
-        .eq('is_published', true)
-        .order('updated_at', { ascending: false }),
+        .select(
+          'id, exam_id, title, description, duration_minutes, english_question_count, other_subject_question_count, uses_question_bank, exclude_diagrams, is_published, release_status, scheduled_release_at, show_explanations_after_submission, created_by, created_at, updated_at'
+        )
+        .or(
+          `is_published.eq.true,release_status.eq.published,and(release_status.eq.queued,scheduled_release_at.lte.${nowIso})`
+        )
+        .order('updated_at', { ascending: false });
+
+      if (initial.error && isMissingReleaseQueueColumnError(initial.error)) {
+        return sb
+          .from('mock_exams')
+          .select(
+            'id, exam_id, title, description, duration_minutes, english_question_count, other_subject_question_count, uses_question_bank, exclude_diagrams, is_published, show_explanations_after_submission, created_by, created_at, updated_at'
+          )
+          .eq('is_published', true)
+          .order('updated_at', { ascending: false });
+      }
+      return initial;
+    };
+
+    const [mocksRes, attemptsRes, ...readinessResponses] = await Promise.all([
+      fetchHubMocks(),
       sb
         .from('mock_attempts')
         .select(
@@ -237,10 +262,12 @@ export async function fetchStudentMockHub(studentId: string): Promise<StudentMoc
 
     void cacheMockAttempts(studentId, attempts);
 
+    const publishedMocks = ((mocksRes.data ?? []) as MockExamRecord[]).filter(isItemCurrentlyReleased);
+
     return {
       enrollments,
       readinessByExamId,
-      publishedMocks: (mocksRes.data ?? []) as MockExamRecord[],
+      publishedMocks,
       attempts,
       migrationMissing: false,
       fromCache: false,
@@ -566,6 +593,7 @@ export async function fetchAdminMockExamsData(): Promise<{
   mockExams: AdminMockExamListItem[];
   bankCountsBySubject: Map<string, number>;
   migrationMissing: boolean;
+  releaseQueueMigrationMissing: boolean;
   error: string | null;
 }> {
   if (!supabase) {
@@ -575,14 +603,22 @@ export async function fetchAdminMockExamsData(): Promise<{
       mockExams: [],
       bankCountsBySubject: new Map(),
       migrationMissing: false,
+      releaseQueueMigrationMissing: false,
       error: 'Supabase is not configured.',
     };
   }
 
-  const [examsRes, subjectsRes, mocksRes, customQRes, bankRes] = await Promise.all([
+  let releaseQueueMigrationMissing = false;
+
+  const [examsRes, subjectsRes, initialMocksRes, customQRes, bankRes] = await Promise.all([
     supabase.from('exams').select('*').order('name', { ascending: true }),
     supabase.from('subjects').select('*').order('name', { ascending: true }),
-    supabase.from('mock_exams').select('*').order('updated_at', { ascending: false }),
+    supabase
+      .from('mock_exams')
+      .select(
+        'id, exam_id, title, description, duration_minutes, english_question_count, other_subject_question_count, uses_question_bank, exclude_diagrams, is_published, release_status, scheduled_release_at, show_explanations_after_submission, created_by, created_at, updated_at'
+      )
+      .order('updated_at', { ascending: false }),
     supabase.from('mock_exam_custom_questions').select('id, mock_exam_id'),
     supabase
       .from('question_bank')
@@ -590,6 +626,18 @@ export async function fetchAdminMockExamsData(): Promise<{
       .eq('status', 'approved')
       .eq('needs_diagram', false),
   ]);
+
+  let mocksRes = initialMocksRes;
+  if (mocksRes.error && isMissingReleaseQueueColumnError(mocksRes.error)) {
+    releaseQueueMigrationMissing = true;
+    const fallback = await supabase
+      .from('mock_exams')
+      .select(
+        'id, exam_id, title, description, duration_minutes, english_question_count, other_subject_question_count, uses_question_bank, exclude_diagrams, is_published, show_explanations_after_submission, created_by, created_at, updated_at'
+      )
+      .order('updated_at', { ascending: false });
+    mocksRes = fallback as typeof initialMocksRes;
+  }
 
   const mockErr = mocksRes.error || customQRes.error;
   if (mockErr && isMissingMockMigrationError(mockErr)) {
@@ -599,6 +647,7 @@ export async function fetchAdminMockExamsData(): Promise<{
       mockExams: [],
       bankCountsBySubject: new Map(),
       migrationMissing: true,
+      releaseQueueMigrationMissing: false,
       error: null,
     };
   }
@@ -611,6 +660,7 @@ export async function fetchAdminMockExamsData(): Promise<{
       mockExams: [],
       bankCountsBySubject: new Map(),
       migrationMissing: false,
+      releaseQueueMigrationMissing,
       error: mapMockError(firstErr),
     };
   }
@@ -635,6 +685,8 @@ export async function fetchAdminMockExamsData(): Promise<{
   const mockExams: AdminMockExamListItem[] = ((mocksRes.data ?? []) as MockExamRecord[]).map(
     (m) => ({
       ...m,
+      release_status: deriveReleaseStatus(m),
+      scheduled_release_at: m.scheduled_release_at ?? null,
       examName: examNameMap.get(m.exam_id) ?? 'Examination',
       customQuestionCount: customCounts.get(m.id) ?? 0,
     })
@@ -646,6 +698,7 @@ export async function fetchAdminMockExamsData(): Promise<{
     mockExams,
     bankCountsBySubject,
     migrationMissing: false,
+    releaseQueueMigrationMissing,
     error: null,
   };
 }
@@ -715,10 +768,12 @@ export async function saveAdminMockExam(input: {
   uses_question_bank: boolean;
   exclude_diagrams: boolean;
   is_published: boolean;
+  release_status?: ReleaseStatus;
+  scheduled_release_at?: string | null;
   show_explanations_after_submission: boolean;
   created_by: string;
   customQuestions: AdminMockCustomQuestionInput[];
-}): Promise<{ mockExamId: string | null; error: string | null }> {
+}): Promise<{ mockExamId: string | null; warning?: string | null; error: string | null }> {
   if (!supabase) return { mockExamId: null, error: 'Supabase is not configured.' };
   if (input.title.trim().length < 2) {
     return { mockExamId: null, error: 'Mock exam title must be at least 2 characters.' };
@@ -743,7 +798,13 @@ export async function saveAdminMockExam(input: {
     }
   }
 
-  const payload = {
+  const releaseStatus: ReleaseStatus =
+    input.release_status ?? (input.is_published ? 'published' : 'draft');
+  const isPublished = releaseStatus === 'published';
+  const scheduledReleaseAt =
+    releaseStatus === 'queued' ? (input.scheduled_release_at ?? null) : null;
+
+  const basePayload = {
     exam_id: input.exam_id,
     title: input.title.trim(),
     description: input.description.trim() || null,
@@ -755,15 +816,29 @@ export async function saveAdminMockExam(input: {
     ),
     uses_question_bank: input.uses_question_bank,
     exclude_diagrams: input.exclude_diagrams,
-    is_published: input.is_published,
+    is_published: isPublished,
     show_explanations_after_submission: input.show_explanations_after_submission,
   };
 
+  const fullPayload = {
+    ...basePayload,
+    release_status: releaseStatus,
+    scheduled_release_at: scheduledReleaseAt,
+  };
+
   let mockExamId = input.id ?? null;
+  let warning: string | null = null;
 
   if (mockExamId) {
-    const { error } = await supabase.from('mock_exams').update(payload).eq('id', mockExamId);
-    if (error) return { mockExamId: null, error: mapMockError(error) };
+    let updateRes = await supabase.from('mock_exams').update(fullPayload).eq('id', mockExamId);
+    if (updateRes.error && isMissingReleaseQueueColumnError(updateRes.error)) {
+      if (releaseStatus === 'queued') {
+        warning =
+          'Mock exam template and questions were saved as Draft. Run migrations 014a–014c in Supabase to enable queuing and scheduled release.';
+      }
+      updateRes = await supabase.from('mock_exams').update(basePayload).eq('id', mockExamId);
+    }
+    if (updateRes.error) return { mockExamId: null, error: mapMockError(updateRes.error) };
 
     const delRes = await supabase
       .from('mock_exam_custom_questions')
@@ -771,13 +846,31 @@ export async function saveAdminMockExam(input: {
       .eq('mock_exam_id', mockExamId);
     if (delRes.error) return { mockExamId, error: mapMockError(delRes.error) };
   } else {
-    const { data, error } = await supabase
+    const insertFullRes = await supabase
       .from('mock_exams')
-      .insert({ ...payload, created_by: input.created_by })
+      .insert({ ...fullPayload, created_by: input.created_by })
       .select('id')
       .single();
-    if (error || !data) return { mockExamId: null, error: mapMockError(error) };
-    mockExamId = data.id;
+
+    if (insertFullRes.error && isMissingReleaseQueueColumnError(insertFullRes.error)) {
+      if (releaseStatus === 'queued') {
+        warning =
+          'Mock exam template and questions were saved as Draft. Run migrations 014a–014c in Supabase to enable queuing and scheduled release.';
+      }
+      const fallbackRes = await supabase
+        .from('mock_exams')
+        .insert({ ...basePayload, created_by: input.created_by })
+        .select('id')
+        .single();
+      if (fallbackRes.error || !fallbackRes.data) {
+        return { mockExamId: null, error: mapMockError(fallbackRes.error) };
+      }
+      mockExamId = fallbackRes.data.id;
+    } else if (insertFullRes.error || !insertFullRes.data) {
+      return { mockExamId: null, error: mapMockError(insertFullRes.error) };
+    } else {
+      mockExamId = insertFullRes.data.id;
+    }
   }
 
   for (let qi = 0; qi < input.customQuestions.length; qi++) {
@@ -816,7 +909,131 @@ export async function saveAdminMockExam(input: {
     }
   }
 
-  return { mockExamId, error: null };
+  return { mockExamId, warning, error: null };
+}
+
+export async function updateMockReleaseStatus(
+  mockExamId: string,
+  releaseStatus: ReleaseStatus,
+  scheduledReleaseAt?: string | null
+): Promise<{ releaseQueueMigrationMissing?: boolean; error: string | null }> {
+  if (!supabase) return { error: 'Supabase is not configured.' };
+
+  const isPublished = releaseStatus === 'published';
+  const payload = {
+    release_status: releaseStatus,
+    scheduled_release_at: releaseStatus === 'queued' ? (scheduledReleaseAt ?? null) : null,
+    is_published: isPublished,
+  };
+
+  const { error } = await supabase
+    .from('mock_exams')
+    .update(payload)
+    .eq('id', mockExamId);
+
+  if (error && isMissingReleaseQueueColumnError(error)) {
+    if (releaseStatus === 'queued') {
+      return {
+        releaseQueueMigrationMissing: true,
+        error:
+          'Release Queue requires database migrations 014a–014c in Supabase SQL Editor.',
+      };
+    }
+    const fallback = await supabase
+      .from('mock_exams')
+      .update({ is_published: isPublished })
+      .eq('id', mockExamId);
+    return {
+      releaseQueueMigrationMissing: true,
+      error: fallback.error ? mapMockError(fallback.error) : null,
+    };
+  }
+
+  return { error: error ? mapMockError(error) : null };
+}
+
+export async function saveTutorMockSubjectQuestions(input: {
+  mockExamId: string;
+  allowedSubjectIds: string[] | null;
+  customQuestions: AdminMockCustomQuestionInput[];
+}): Promise<{ error: string | null }> {
+  if (!supabase) return { error: 'Supabase is not configured.' };
+  if (input.allowedSubjectIds !== null && input.allowedSubjectIds.length === 0) {
+    return { error: 'No subjects are assigned to your Tutor account yet.' };
+  }
+
+  const allowedSet =
+    input.allowedSubjectIds !== null ? new Set(input.allowedSubjectIds) : null;
+
+  for (let i = 0; i < input.customQuestions.length; i++) {
+    const q = input.customQuestions[i];
+    if (allowedSet && !allowedSet.has(q.subject_id)) {
+      return {
+        error: `Question #${i + 1} targets a subject not assigned to your Tutor account.`,
+      };
+    }
+    if (!q.question_text.trim()) {
+      return { error: `Your question #${i + 1} needs question text.` };
+    }
+    if (q.options.filter((o) => o.option_text.trim()).length < 2) {
+      return { error: `Your question #${i + 1} needs at least 2 answer options.` };
+    }
+    if (q.options.filter((o) => o.is_correct).length !== 1) {
+      return { error: `Your question #${i + 1} must have exactly one correct option.` };
+    }
+  }
+
+  const delQuery = supabase
+    .from('mock_exam_custom_questions')
+    .delete()
+    .eq('mock_exam_id', input.mockExamId);
+
+  const delRes =
+    input.allowedSubjectIds !== null
+      ? await delQuery.in('subject_id', input.allowedSubjectIds)
+      : await delQuery;
+
+  if (delRes.error) {
+    return { error: mapMockError(delRes.error) };
+  }
+
+  for (let qi = 0; qi < input.customQuestions.length; qi++) {
+    const q = input.customQuestions[qi];
+    const qRes = await supabase
+      .from('mock_exam_custom_questions')
+      .insert({
+        mock_exam_id: input.mockExamId,
+        subject_id: q.subject_id,
+        question_text: q.question_text.trim(),
+        explanation: q.explanation.trim() || null,
+        difficulty: q.difficulty,
+        points: Math.max(1, q.points || 1),
+        display_order: qi + 1,
+      })
+      .select('id')
+      .single();
+
+    if (qRes.error || !qRes.data) {
+      return { error: mapMockError(qRes.error) };
+    }
+
+    const optRows = q.options
+      .filter((o) => o.option_text.trim())
+      .map((o, oi) => ({
+        custom_question_id: qRes.data.id,
+        option_key: o.option_key || String.fromCharCode(65 + oi),
+        option_text: o.option_text.trim(),
+        is_correct: o.is_correct,
+        display_order: oi + 1,
+      }));
+
+    const optRes = await supabase.from('mock_exam_custom_options').insert(optRows);
+    if (optRes.error) {
+      return { error: mapMockError(optRes.error) };
+    }
+  }
+
+  return { error: null };
 }
 
 export async function deleteAdminMockExam(mockExamId: string): Promise<{ error: string | null }> {

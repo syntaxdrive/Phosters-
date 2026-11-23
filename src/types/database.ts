@@ -9,6 +9,7 @@ export type PushNotificationType =
   | 'test_reminder'
   | 'custom';
 export type EngagementTargetType = 'course' | 'topic' | 'lesson';
+export type ReleaseStatus = 'draft' | 'queued' | 'published';
 
 export type Profile = {
   id: string;
@@ -125,6 +126,8 @@ export type Test = {
   topic_id: string | null;
   lesson_id: string | null;
   is_published: boolean;
+  release_status?: ReleaseStatus;
+  scheduled_release_at?: string | null;
   show_explanations_after_submission: boolean;
   created_at: string;
   updated_at: string;
@@ -250,6 +253,14 @@ export type ContentViewCounter = {
   target_key: string;
   views_count: number;
   updated_at: string;
+};
+
+export type TutorSubjectAssignment = {
+  id: string;
+  tutor_id: string;
+  subject_id: string;
+  assigned_by: string | null;
+  created_at: string;
 };
 
 export type Database = {
@@ -472,6 +483,8 @@ export type Database = {
           topic_id?: string | null;
           lesson_id?: string | null;
           is_published?: boolean;
+          release_status?: ReleaseStatus;
+          scheduled_release_at?: string | null;
           show_explanations_after_submission?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -482,6 +495,8 @@ export type Database = {
           topic_id?: string | null;
           lesson_id?: string | null;
           is_published?: boolean;
+          release_status?: ReleaseStatus;
+          scheduled_release_at?: string | null;
           show_explanations_after_submission?: boolean;
           updated_at?: string;
         };
@@ -831,6 +846,8 @@ export type Database = {
           uses_question_bank: boolean;
           exclude_diagrams: boolean;
           is_published: boolean;
+          release_status?: ReleaseStatus;
+          scheduled_release_at?: string | null;
           show_explanations_after_submission: boolean;
           created_by: string | null;
           created_at: string;
@@ -847,6 +864,8 @@ export type Database = {
           uses_question_bank?: boolean;
           exclude_diagrams?: boolean;
           is_published?: boolean;
+          release_status?: ReleaseStatus;
+          scheduled_release_at?: string | null;
           show_explanations_after_submission?: boolean;
           created_by?: string | null;
           created_at?: string;
@@ -862,6 +881,8 @@ export type Database = {
           uses_question_bank?: boolean;
           exclude_diagrams?: boolean;
           is_published?: boolean;
+          release_status?: ReleaseStatus;
+          scheduled_release_at?: string | null;
           show_explanations_after_submission?: boolean;
           updated_at?: string;
         };
@@ -1014,6 +1035,18 @@ export type Database = {
           selected_option_key?: string | null;
           is_correct?: boolean;
         };
+        Relationships: [];
+      };
+      tutor_subject_assignments: {
+        Row: TutorSubjectAssignment;
+        Insert: {
+          id?: string;
+          tutor_id: string;
+          subject_id: string;
+          assigned_by?: string | null;
+          created_at?: string;
+        };
+        Update: never;
         Relationships: [];
       };
     };
@@ -1187,6 +1220,37 @@ export type Database = {
           p_attempt_id: string;
         };
         Returns: unknown;
+      };
+      tutor_can_access_subject: {
+        Args: {
+          p_subject_id: string;
+        };
+        Returns: boolean;
+      };
+      tutor_can_access_test: {
+        Args: {
+          p_topic_id: string | null;
+          p_lesson_id: string | null;
+        };
+        Returns: boolean;
+      };
+      set_tutor_assigned_subjects: {
+        Args: {
+          p_tutor_id: string;
+          p_subject_ids: string[];
+        };
+        Returns: Array<{
+          tutor_id: string;
+          subject_id: string;
+        }>;
+      };
+      is_item_released: {
+        Args: {
+          p_is_published: boolean;
+          p_release_status: string;
+          p_scheduled_release_at: string | null;
+        };
+        Returns: boolean;
       };
     };
     Enums: {

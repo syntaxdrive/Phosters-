@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowDown, ArrowLeft, ArrowUp, BellRing, Plus, Trash2 } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 import { isSafeExternalHttpUrl, validateMaterialUrl } from '../../lib/materialLinks';
 import { getSafeYouTubeEmbedUrl } from '../../lib/youtube';
 import {
@@ -11,6 +12,10 @@ import {
   saveLessonWithAttachments,
 } from '../../services/adminService';
 import { triggerPushNotification } from '../../services/pushService';
+import {
+  fetchMyTutorSubjectScope,
+  filterSubjectsByTutorScope,
+} from '../../services/tutorScopeService';
 import type { LinkDraft, MaterialDraft } from '../../types/admin';
 import type { Exam, MaterialFileType, Subject, Topic } from '../../types/database';
 import { AdminNav } from '../../components/admin/AdminNav';
@@ -25,9 +30,11 @@ function newLocalKey() {
 }
 
 export function AdminLessonEditorPage() {
+  const { user, profile } = useAuth();
   const { lessonId } = useParams();
   const isEditing = Boolean(lessonId && lessonId !== 'new');
   const navigate = useNavigate();
+  const [noSubjectsAssigned, setNoSubjectsAssigned] = useState(false);
 
   const [exams, setExams] = useState<Exam[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -61,10 +68,11 @@ export function AdminLessonEditorPage() {
     setLoading(true);
     setLoadError(null);
 
-    const [examsRes, subjectsRes, topicsRes] = await Promise.all([
+    const [examsRes, subjectsRes, topicsRes, scope] = await Promise.all([
       fetchAllExams(),
       fetchAllSubjects(),
       fetchAllTopics(),
+      fetchMyTutorSubjectScope(user?.email, profile?.role),
     ]);
 
     const baseErr = examsRes.error || subjectsRes.error || topicsRes.error;
@@ -74,9 +82,20 @@ export function AdminLessonEditorPage() {
       return;
     }
 
+    const scopedSubjects = filterSubjectsByTutorScope(
+      subjectsRes.subjects,
+      scope.assignedSubjectIds
+    );
+    const allowedSet =
+      scope.assignedSubjectIds !== null ? new Set(scope.assignedSubjectIds) : null;
+    const scopedTopics = allowedSet
+      ? topicsRes.topics.filter((t) => allowedSet.has(t.subject_id))
+      : topicsRes.topics;
+
+    setNoSubjectsAssigned(!scope.isSuperAdmin && scopedSubjects.length === 0);
     setExams(examsRes.exams);
-    setSubjects(subjectsRes.subjects);
-    setTopics(topicsRes.topics);
+    setSubjects(scopedSubjects);
+    setTopics(scopedTopics);
 
     if (isEditing && lessonId) {
       const lessonRes = await fetchLessonForEditor(lessonId);
@@ -90,7 +109,7 @@ export function AdminLessonEditorPage() {
       const parentTopic = lessonRes.topic;
 
       setSelectedExamId(parentTopic?.exam_id ?? examsRes.exams[0]?.id ?? '');
-      setSelectedSubjectId(parentTopic?.subject_id ?? subjectsRes.subjects[0]?.id ?? '');
+      setSelectedSubjectId(parentTopic?.subject_id ?? scopedSubjects[0]?.id ?? '');
       setTopicId(l.topic_id);
       setTitle(l.title);
       setShortDescription(l.short_description ?? '');
@@ -118,14 +137,14 @@ export function AdminLessonEditorPage() {
         }))
       );
     } else {
-      const firstTopic = topicsRes.topics[0];
+      const firstTopic = scopedTopics[0];
       setSelectedExamId(firstTopic?.exam_id ?? examsRes.exams[0]?.id ?? '');
-      setSelectedSubjectId(firstTopic?.subject_id ?? subjectsRes.subjects[0]?.id ?? '');
+      setSelectedSubjectId(firstTopic?.subject_id ?? scopedSubjects[0]?.id ?? '');
       setTopicId(firstTopic?.id ?? '');
     }
 
     setLoading(false);
-  }, [isEditing, lessonId]);
+  }, [isEditing, lessonId, profile?.role, user?.email]);
 
   useEffect(() => {
     void loadEditor();
@@ -301,6 +320,12 @@ export function AdminLessonEditorPage() {
       </div>
 
       <AdminNav />
+
+      {noSubjectsAssigned && (
+        <Alert tone="warning" title="No subjects assigned to your Tutor account">
+          Ask Super Admin (<code className="font-mono text-xs">oyasordaniel@gmail.com</code>) to assign one or more subjects to your account before creating lessons.
+        </Alert>
+      )}
 
       {selectedTopic && !selectedTopic.is_published && (
         <Alert tone="info" title="Parent topic is currently a draft">

@@ -22,6 +22,7 @@ import {
   verifySuperAdminAuthorization,
 } from './server/questionBankEngine.ts';
 import { generateTutorQuestionsWithGemini } from './server/aiTestEngine.ts';
+import { isSuperAdminEmail } from './src/lib/superAdmin.ts';
 import type { AiGenerateQuestionsRequest } from './src/types/cbt.ts';
 import type { RemindInactiveInput, SendPushPayload } from './src/types/push.ts';
 import type {
@@ -287,7 +288,47 @@ async function createServer() {
         return;
       }
 
-      const result = await generateTutorQuestionsWithGemini(body);
+      let resolvedSubjectName = body.subjectName;
+      const requestedSubjectId =
+        typeof body.subjectId === 'string' ? body.subjectId.trim() : '';
+
+      if (requestedSubjectId && authCheck.client && authCheck.userId) {
+        if (!isSuperAdminEmail(authCheck.userEmail)) {
+          const assignRes = await authCheck.client
+            .from('tutor_subject_assignments')
+            .select('subject_id')
+            .eq('tutor_id', authCheck.userId);
+
+          if (!assignRes.error) {
+            const assignedIds = new Set(
+              ((assignRes.data ?? []) as Array<{ subject_id: string }>).map(
+                (r) => r.subject_id
+              )
+            );
+            if (!assignedIds.has(requestedSubjectId)) {
+              res.status(403).json({
+                error:
+                  'This subject is not assigned to your Tutor account. Ask Super Admin to assign it.',
+              });
+              return;
+            }
+          }
+        }
+
+        const subjRes = await authCheck.client
+          .from('subjects')
+          .select('name')
+          .eq('id', requestedSubjectId)
+          .maybeSingle();
+        if (!subjRes.error && subjRes.data?.name) {
+          resolvedSubjectName = subjRes.data.name;
+        }
+      }
+
+      const result = await generateTutorQuestionsWithGemini({
+        ...body,
+        subjectName: resolvedSubjectName,
+      });
       res.status(result.status).json(result.body);
     } catch (err) {
       console.error('Express /api/cbt/ai-generate-questions error:', err);

@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Lock, RefreshCw, Search, ShieldCheck, UserCheck, UserMinus } from 'lucide-react';
+import {
+  BookOpen,
+  Check,
+  Lock,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  UserCheck,
+  UserMinus,
+} from 'lucide-react';
 import {
   fetchManagedAccounts,
   setManagedAccountRole,
+  setTutorAssignedSubjects,
   type ManagedAccountRow,
 } from '../../services/superAdminService';
-import type { UserRole } from '../../types/database';
+import type { Subject, UserRole } from '../../types/database';
 import { AdminNav } from '../../components/admin/AdminNav';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
@@ -27,7 +37,9 @@ function formatShortDate(iso: string | null): string {
 
 export function AdminAccountsPage() {
   const [accounts, setAccounts] = useState<ManagedAccountRow[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [migrationMissing, setMigrationMissing] = useState(false);
+  const [assignmentsMigrationMissing, setAssignmentsMigrationMissing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,6 +47,12 @@ export function AdminAccountsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [confirmDemoteId, setConfirmDemoteId] = useState<string | null>(null);
+
+  // Subject assignment editor state
+  const [editingSubjectsUserId, setEditingSubjectsUserId] = useState<string | null>(null);
+  const [draftSubjectIds, setDraftSubjectIds] = useState<string[]>([]);
+  const [savingSubjects, setSavingSubjects] = useState(false);
+
   const [notice, setNotice] = useState<{
     tone: 'success' | 'info' | 'error';
     message: string;
@@ -50,13 +68,20 @@ export function AdminAccountsPage() {
       return;
     }
     setMigrationMissing(res.migrationMissing);
+    setAssignmentsMigrationMissing(res.assignmentsMigrationMissing);
     setAccounts(res.accounts);
+    setSubjects(res.subjects);
     setLoading(false);
   }, []);
 
   useEffect(() => {
     void loadAccounts();
   }, [loadAccounts]);
+
+  const subjectMap = useMemo(
+    () => new Map(subjects.map((s) => [s.id, s])),
+    [subjects]
+  );
 
   const counts = useMemo(() => {
     const tutorsCount = accounts.filter((a) => a.role === 'admin').length;
@@ -75,16 +100,77 @@ export function AdminAccountsPage() {
         return false;
       }
       if (!q) return true;
-      const haystack = [acc.fullName, acc.email ?? '', acc.phone ?? '']
+      const assignedNames = acc.assignedSubjectIds
+        .map((id) => subjectMap.get(id)?.name ?? '')
+        .join(' ');
+      const haystack = [acc.fullName, acc.email ?? '', acc.phone ?? '', assignedNames]
         .join(' ')
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [accounts, roleFilter, searchQuery]);
+  }, [accounts, roleFilter, searchQuery, subjectMap]);
+
+  function openSubjectEditor(account: ManagedAccountRow) {
+    setNotice(null);
+    setConfirmDemoteId(null);
+    if (editingSubjectsUserId === account.userId) {
+      setEditingSubjectsUserId(null);
+      return;
+    }
+    setEditingSubjectsUserId(account.userId);
+    setDraftSubjectIds(account.assignedSubjectIds);
+  }
+
+  function toggleDraftSubject(subjectId: string) {
+    setDraftSubjectIds((prev) =>
+      prev.includes(subjectId)
+        ? prev.filter((id) => id !== subjectId)
+        : [...prev, subjectId]
+    );
+  }
+
+  async function handleSaveSubjects(account: ManagedAccountRow) {
+    setNotice(null);
+    setSavingSubjects(true);
+    const res = await setTutorAssignedSubjects(account.userId, draftSubjectIds);
+    setSavingSubjects(false);
+
+    if (res.error || !res.assignedSubjectIds) {
+      setNotice({
+        tone: 'error',
+        message: res.error || 'Could not save tutor subject assignments.',
+      });
+      return;
+    }
+
+    setAccounts((prev) =>
+      prev.map((row) =>
+        row.userId === account.userId
+          ? { ...row, assignedSubjectIds: res.assignedSubjectIds! }
+          : row
+      )
+    );
+    setEditingSubjectsUserId(null);
+
+    const assignedNames = res.assignedSubjectIds
+      .map((id) => subjectMap.get(id)?.name)
+      .filter(Boolean);
+
+    setNotice({
+      tone: 'success',
+      message:
+        assignedNames.length > 0
+          ? `Assigned ${assignedNames.join(', ')} to ${account.fullName}.`
+          : `Cleared all subject assignments for ${account.fullName}.`,
+    });
+  }
 
   async function handleRoleChange(account: ManagedAccountRow, nextRole: UserRole) {
     setNotice(null);
     setConfirmDemoteId(null);
+    if (editingSubjectsUserId === account.userId) {
+      setEditingSubjectsUserId(null);
+    }
     setUpdatingUserId(account.userId);
 
     const res = await setManagedAccountRole(account.userId, nextRole);
@@ -100,15 +186,26 @@ export function AdminAccountsPage() {
 
     setAccounts((prev) =>
       prev.map((row) =>
-        row.userId === account.userId ? { ...row, role: res.role! } : row
+        row.userId === account.userId
+          ? {
+              ...row,
+              role: res.role!,
+              assignedSubjectIds: res.role === 'student' ? [] : row.assignedSubjectIds,
+            }
+          : row
       )
     );
+
+    if (res.role === 'admin' && !assignmentsMigrationMissing) {
+      setEditingSubjectsUserId(account.userId);
+      setDraftSubjectIds(account.assignedSubjectIds);
+    }
 
     setNotice({
       tone: 'success',
       message:
         res.role === 'admin'
-          ? `${account.fullName} (${account.email || 'account'}) has been upgraded to Tutor / Admin access.`
+          ? `${account.fullName} (${account.email || 'account'}) has been upgraded to Tutor / Admin access. Select one or more subjects to assign below.`
           : `${account.fullName} (${account.email || 'account'}) has been returned to Student access.`,
     });
   }
@@ -123,7 +220,7 @@ export function AdminAccountsPage() {
           <div className="flex flex-wrap items-center gap-x-2 text-sm text-slate-500 dark:text-slate-400">
             <span>Super Admin control</span>
             <span aria-hidden="true">·</span>
-            <span>Upgrade registered users to Tutor accounts without SQL</span>
+            <span>Upgrade Tutors and assign one or multiple subjects per Tutor</span>
           </div>
         </div>
 
@@ -153,6 +250,24 @@ export function AdminAccountsPage() {
         </Alert>
       ) : (
         <>
+          {assignmentsMigrationMissing && (
+            <Alert tone="info" title="Run migrations 013a–013c for Tutor Subject Assignments">
+              Run{' '}
+              <code className="font-mono text-xs bg-white/80 dark:bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                013a_tutor_subject_assignments.sql
+              </code>
+              ,{' '}
+              <code className="font-mono text-xs bg-white/80 dark:bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                013b_tutor_subject_rls_enforcement.sql
+              </code>
+              , and{' '}
+              <code className="font-mono text-xs bg-white/80 dark:bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                013c_tutor_rls_tests_bank_and_mocks.sql
+              </code>{' '}
+              in order in Supabase SQL Editor to enable multi-subject Tutor assignment and database enforcement.
+            </Alert>
+          )}
+
           {/* Summary KPI strip */}
           <section
             aria-label="Account role counts"
@@ -228,15 +343,15 @@ export function AdminAccountsPage() {
                   type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by name, email, or phone..."
-                  aria-label="Search accounts by name, email, or phone"
+                  placeholder="Search by name, email, phone, or subject..."
+                  aria-label="Search accounts by name, email, phone, or subject"
                   className="w-full min-h-[44px] pl-9 pr-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-phosters-600"
                 />
               </div>
             </div>
 
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Ask new tutors to register normally through <code className="font-mono">/signup</code>, then click <strong>Upgrade to Tutor</strong> beside their account below. Upgraded tutors immediately gain access to <code className="font-mono">/admin</code>, while only the Super Admin can manage roles.
+              Ask new tutors to register normally through <code className="font-mono">/signup</code>, click <strong>Upgrade to Tutor</strong>, then click <strong>Assign Subjects</strong> to grant access to one or multiple subjects across Topics, Lessons, Tests, and Mock Exams.
             </p>
           </Card>
 
@@ -252,110 +367,229 @@ export function AdminAccountsPage() {
                 {filteredAccounts.map((acc) => {
                   const isBusy = updatingUserId === acc.userId;
                   const isConfirmingDemote = confirmDemoteId === acc.userId;
+                  const isEditingSubjects = editingSubjectsUserId === acc.userId;
+                  const assignedNames = acc.assignedSubjectIds
+                    .map((id) => subjectMap.get(id)?.name)
+                    .filter((n): n is string => Boolean(n));
 
                   return (
-                    <div
-                      key={acc.userId}
-                      className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                    >
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                          <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
-                            {acc.fullName}
-                          </span>
-                          <span aria-hidden="true" className="text-slate-400">
-                            ·
-                          </span>
-                          <span
-                            className={[
-                              'text-xs font-semibold inline-flex items-center gap-1',
-                              acc.isSuperAdmin
-                                ? 'text-phosters-700 dark:text-phosters-400'
-                                : acc.role === 'admin'
-                                  ? 'text-phosters-700 dark:text-phosters-400'
-                                  : 'text-slate-600 dark:text-slate-400',
-                            ].join(' ')}
-                          >
-                            {acc.isSuperAdmin && (
-                              <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                            )}
-                            <span>
-                              {acc.isSuperAdmin
-                                ? 'Super Admin'
-                                : acc.role === 'admin'
-                                  ? 'Tutor / Admin'
-                                  : 'Student'}
+                    <div key={acc.userId} className="p-4 space-y-3">
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                              {acc.fullName}
                             </span>
-                          </span>
+                            <span aria-hidden="true" className="text-slate-400">
+                              ·
+                            </span>
+                            <span
+                              className={[
+                                'text-xs font-semibold inline-flex items-center gap-1',
+                                acc.isSuperAdmin
+                                  ? 'text-phosters-700 dark:text-phosters-400'
+                                  : acc.role === 'admin'
+                                    ? 'text-phosters-700 dark:text-phosters-400'
+                                    : 'text-slate-600 dark:text-slate-400',
+                              ].join(' ')}
+                            >
+                              {acc.isSuperAdmin && (
+                                <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                              )}
+                              <span>
+                                {acc.isSuperAdmin
+                                  ? 'Super Admin'
+                                  : acc.role === 'admin'
+                                    ? 'Tutor / Admin'
+                                    : 'Student'}
+                              </span>
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
+                            <span className="font-mono text-slate-700 dark:text-slate-300">
+                              {acc.email || 'No email'}
+                            </span>
+                            {acc.phone && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span className="tabular-nums">{acc.phone}</span>
+                              </>
+                            )}
+                            <span aria-hidden="true">·</span>
+                            <span className="tabular-nums">
+                              Joined {formatShortDate(acc.createdAt)}
+                            </span>
+                            <span aria-hidden="true">·</span>
+                            <span className="tabular-nums">
+                              Last sign-in {formatShortDate(acc.lastSignInAt)}
+                            </span>
+                          </div>
+
+                          {acc.isSuperAdmin ? (
+                            <p className="text-xs font-medium text-phosters-700 dark:text-phosters-400">
+                              Assigned subjects: All subjects (unrestricted)
+                            </p>
+                          ) : acc.role === 'admin' ? (
+                            <p className="text-xs">
+                              <span className="text-slate-500 dark:text-slate-400">
+                                Assigned subjects:{' '}
+                              </span>
+                              {assignmentsMigrationMissing ? (
+                                <span className="text-slate-500 dark:text-slate-400">
+                                  Pending migration 013a
+                                </span>
+                              ) : assignedNames.length > 0 ? (
+                                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                  {assignedNames.join(' · ')}
+                                </span>
+                              ) : (
+                                <span className="font-semibold text-amber-700 dark:text-amber-400">
+                                  No subjects assigned yet
+                                </span>
+                              )}
+                            </p>
+                          ) : null}
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
-                          <span className="font-mono text-slate-700 dark:text-slate-300">
-                            {acc.email || 'No email'}
-                          </span>
-                          {acc.phone && (
+                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                          {acc.isSuperAdmin ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 px-3 py-2 whitespace-nowrap">
+                              <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+                              <span>Protected</span>
+                            </span>
+                          ) : acc.role === 'student' ? (
+                            <Button
+                              type="button"
+                              loading={isBusy}
+                              onClick={() => void handleRoleChange(acc, 'admin')}
+                            >
+                              <UserCheck className="h-4 w-4" aria-hidden="true" />
+                              <span>Upgrade to Tutor</span>
+                            </Button>
+                          ) : isConfirmingDemote ? (
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="danger"
+                                loading={isBusy}
+                                onClick={() => void handleRoleChange(acc, 'student')}
+                              >
+                                Confirm Revert
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => setConfirmDemoteId(null)}
+                                disabled={isBusy}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
                             <>
-                              <span aria-hidden="true">·</span>
-                              <span className="tabular-nums">{acc.phone}</span>
+                              <Button
+                                type="button"
+                                variant={isEditingSubjects ? 'primary' : 'secondary'}
+                                disabled={assignmentsMigrationMissing || isBusy}
+                                onClick={() => openSubjectEditor(acc)}
+                              >
+                                <BookOpen className="h-4 w-4" aria-hidden="true" />
+                                <span>
+                                  {isEditingSubjects ? 'Close Subjects' : 'Assign Subjects'}
+                                </span>
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                loading={isBusy}
+                                onClick={() => setConfirmDemoteId(acc.userId)}
+                              >
+                                <UserMinus className="h-4 w-4" aria-hidden="true" />
+                                <span>Revert to Student</span>
+                              </Button>
                             </>
                           )}
-                          <span aria-hidden="true">·</span>
-                          <span className="tabular-nums">
-                            Joined {formatShortDate(acc.createdAt)}
-                          </span>
-                          <span aria-hidden="true">·</span>
-                          <span className="tabular-nums">
-                            Last sign-in {formatShortDate(acc.lastSignInAt)}
-                          </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
-                        {acc.isSuperAdmin ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 px-3 py-2 whitespace-nowrap">
-                            <Lock className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span>Protected</span>
-                          </span>
-                        ) : acc.role === 'student' ? (
-                          <Button
-                            type="button"
-                            loading={isBusy}
-                            onClick={() => void handleRoleChange(acc, 'admin')}
-                          >
-                            <UserCheck className="h-4 w-4" aria-hidden="true" />
-                            <span>Upgrade to Tutor</span>
-                          </Button>
-                        ) : isConfirmingDemote ? (
-                          <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              variant="danger"
-                              loading={isBusy}
-                              onClick={() => void handleRoleChange(acc, 'student')}
-                            >
-                              Confirm Revert
-                            </Button>
+                      {isEditingSubjects && acc.role === 'admin' && !acc.isSuperAdmin && (
+                        <div className="rounded-xl border border-phosters-200 dark:border-phosters-800/80 bg-phosters-50/40 dark:bg-phosters-950/30 p-4 space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                                Assign subjects to {acc.fullName}
+                              </p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                                Select one or multiple subjects ({draftSubjectIds.length} selected)
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs font-semibold">
+                              <button
+                                type="button"
+                                onClick={() => setDraftSubjectIds(subjects.map((s) => s.id))}
+                                className="text-phosters-700 dark:text-phosters-400 hover:underline cursor-pointer"
+                              >
+                                Select All
+                              </button>
+                              <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">
+                                |
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setDraftSubjectIds([])}
+                                className="text-slate-600 dark:text-slate-400 hover:underline cursor-pointer"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {subjects.map((subj) => {
+                              const checked = draftSubjectIds.includes(subj.id);
+                              return (
+                                <label
+                                  key={subj.id}
+                                  className={[
+                                    'flex items-center gap-2.5 min-h-[42px] px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors',
+                                    checked
+                                      ? 'bg-white dark:bg-slate-900 border-phosters-500 dark:border-phosters-500 text-slate-900 dark:text-slate-100 font-semibold'
+                                      : 'bg-white/70 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700',
+                                  ].join(' ')}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleDraftSubject(subj.id)}
+                                    className="h-4 w-4 rounded border-slate-300 text-phosters-600 focus:ring-phosters-600"
+                                  />
+                                  <span className="truncate">{subj.name}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
                             <Button
                               type="button"
                               variant="secondary"
-                              onClick={() => setConfirmDemoteId(null)}
-                              disabled={isBusy}
+                              disabled={savingSubjects}
+                              onClick={() => setEditingSubjectsUserId(null)}
                             >
                               Cancel
                             </Button>
+                            <Button
+                              type="button"
+                              loading={savingSubjects}
+                              onClick={() => void handleSaveSubjects(acc)}
+                            >
+                              <Check className="h-4 w-4" aria-hidden="true" />
+                              <span>Save Subject Assignments</span>
+                            </Button>
                           </div>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            loading={isBusy}
-                            onClick={() => setConfirmDemoteId(acc.userId)}
-                          >
-                            <UserMinus className="h-4 w-4" aria-hidden="true" />
-                            <span>Revert to Student</span>
-                          </Button>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

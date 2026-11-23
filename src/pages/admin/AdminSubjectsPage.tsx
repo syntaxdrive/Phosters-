@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useAuth } from '../../hooks/useAuth';
+import { isSuperAdminUser } from '../../lib/superAdmin';
 import { fetchAllSubjects, saveSubject } from '../../services/adminService';
 import { slugify } from '../../lib/slug';
 import type { Subject } from '../../types/database';
@@ -10,6 +12,9 @@ import { Input } from '../../components/ui/Input';
 import { ErrorState, LoadingState } from '../../components/ui/States';
 
 export function AdminSubjectsPage() {
+  const { user, profile } = useAuth();
+  const isSuperAdmin = isSuperAdminUser(user?.email, profile?.role);
+
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -109,9 +114,16 @@ export function AdminSubjectsPage() {
 
       <AdminNav />
 
+      {!isSuperAdmin && (
+        <Alert tone="info" title="Super Admin only">
+          Global subjects are managed by the Super Admin (<code className="font-mono text-xs">oyasordaniel@gmail.com</code>). Use Tutor Access to request additional subjects for your account.
+        </Alert>
+      )}
+
       {formError && <Alert tone="error">{formError}</Alert>}
       {formSuccess && <Alert tone="success">{formSuccess}</Alert>}
 
+      {isSuperAdmin && (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-5">
           <Card padding="lg">
@@ -211,6 +223,7 @@ export function AdminSubjectsPage() {
           </Card>
         </div>
       </div>
+      )}
     </div>
   );
 }
