@@ -134,8 +134,8 @@ export function MockExamsPage() {
       {hub?.migrationMissing && (
         <Alert tone="info" title="Mock Exam database setup required">
           Ask your Super Administrator to run{' '}
-          <code className="font-mono text-xs">supabase/migrations/012_mock_exams_schema.sql</code>{' '}
-          in the Supabase SQL Editor to enable 4-subject mock sittings and JAMB /400 scoring.
+          <code className="font-mono text-xs">supabase/migrations/012a–012d</code>{' '}
+          (in order) in the Supabase SQL Editor to enable 4-subject mock sittings and JAMB /400 scoring.
         </Alert>
       )}
 

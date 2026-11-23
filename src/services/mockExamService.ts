@@ -42,7 +42,7 @@ function isMissingMockMigrationError(err: { message?: string; code?: string } | 
 function mapMockError(err: { message?: string; code?: string } | null): string {
   if (!err) return 'An unexpected mock exam error occurred.';
   if (isMissingMockMigrationError(err)) {
-    return 'Mock exam tables have not been set up in Supabase yet. Run migration 012_mock_exams_schema.sql in Supabase SQL Editor.';
+    return 'Mock exam tables have not been set up in Supabase yet. Run migrations 012a through 012d in order in Supabase SQL Editor.';
   }
   if (err.code === '42501') {
     return 'You do not have permission for this mock exam action.';

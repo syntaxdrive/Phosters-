@@ -299,8 +299,9 @@ export function AdminMockExamsPage() {
       <AdminNav />
 
       {migrationMissing && (
-        <Alert tone="info" title="Run migration 012 first">
-          Execute <code className="font-mono text-xs">supabase/migrations/012_mock_exams_schema.sql</code> in Supabase SQL Editor to enable Mock Exams.
+        <Alert tone="info" title="Run migrations 012a–012d first">
+          Execute <code className="font-mono text-xs">supabase/migrations/012a</code> through{' '}
+          <code className="font-mono text-xs">012d</code> in order in Supabase SQL Editor to enable Mock Exams.
         </Alert>
       )}
 
