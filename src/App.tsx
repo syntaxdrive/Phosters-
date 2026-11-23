@@ -75,6 +75,15 @@ const ProfilePage = lazy(() =>
 const OfflineLibraryPage = lazy(() =>
   import('./pages/student/OfflineLibraryPage').then((m) => ({ default: m.OfflineLibraryPage }))
 );
+const MockExamsPage = lazy(() =>
+  import('./pages/student/MockExamsPage').then((m) => ({ default: m.MockExamsPage }))
+);
+const MockTakePage = lazy(() =>
+  import('./pages/student/MockTakePage').then((m) => ({ default: m.MockTakePage }))
+);
+const MockResultDetailPage = lazy(() =>
+  import('./pages/student/MockResultDetailPage').then((m) => ({ default: m.MockResultDetailPage }))
+);
 const AdminDashboardPage = lazy(() =>
   import('./pages/admin/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage }))
 );
@@ -113,6 +122,9 @@ const AdminAccountsPage = lazy(() =>
 );
 const AdminQuestionBankPage = lazy(() =>
   import('./pages/admin/AdminQuestionBankPage').then((m) => ({ default: m.AdminQuestionBankPage }))
+);
+const AdminMockExamsPage = lazy(() =>
+  import('./pages/admin/AdminMockExamsPage').then((m) => ({ default: m.AdminMockExamsPage }))
 );
 const NotFoundPage = lazy(() =>
   import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage }))
@@ -166,6 +178,9 @@ export default function App() {
                     <Route path="/app/results/:attemptId" element={<TestResultDetailPage />} />
                     <Route path="/app/profile" element={<ProfilePage />} />
                     <Route path="/app/offline" element={<OfflineLibraryPage />} />
+                    <Route path="/app/mocks" element={<MockExamsPage />} />
+                    <Route path="/app/mocks/:attemptId" element={<MockTakePage />} />
+                    <Route path="/app/mocks/results/:attemptId" element={<MockResultDetailPage />} />
 
                   <Route element={<AdminRoute />}>
                     <Route path="/admin" element={<AdminDashboardPage />} />
@@ -178,6 +193,7 @@ export default function App() {
                     <Route path="/admin/lessons/:lessonId" element={<AdminLessonEditorPage />} />
                     <Route path="/admin/tests" element={<AdminTestsPage />} />
                     <Route path="/admin/tests/:testId" element={<AdminTestEditorPage />} />
+                    <Route path="/admin/mocks" element={<AdminMockExamsPage />} />
                     <Route path="/admin/guide" element={<AdminTutorGuidePage />} />
                     <Route element={<SuperAdminRoute />}>
                       <Route path="/admin/accounts" element={<AdminAccountsPage />} />

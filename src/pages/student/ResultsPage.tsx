@@ -4,7 +4,8 @@ import { ChevronRight, CloudUpload, RefreshCw, Share2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { fetchStudentAttempts } from '../../services/cbtService';
-import type { StudentAttemptSummary } from '../../types/cbt';
+import { fetchStudentMockAttempts } from '../../services/mockExamService';
+import type { MockAttemptSummary, StudentAttemptSummary } from '../../types/cbt';
 import type { SharePayload } from '../../types/engagement';
 import { ShareDialog, buildTestResultSharePayload } from '../../components/social/ShareDialog';
 import { Button } from '../../components/ui/Button';
@@ -15,23 +16,30 @@ export function ResultsPage() {
   const { user } = useAuth();
   const { isOnline, isSyncing, pendingActions, syncNow } = useOfflineSync();
   const [attempts, setAttempts] = useState<StudentAttemptSummary[]>([]);
+  const [mockAttempts, setMockAttempts] = useState<MockAttemptSummary[]>([]);
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const pendingTests = pendingActions.filter((a) => a.kind === 'test_submission');
+  const pendingTests = pendingActions.filter(
+    (a) => a.kind === 'test_submission' || a.kind === 'mock_submission'
+  );
 
   const loadResults = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     setError(null);
-    const res = await fetchStudentAttempts(user.id);
+    const [res, mockRes] = await Promise.all([
+      fetchStudentAttempts(user.id),
+      fetchStudentMockAttempts(user.id),
+    ]);
     if (res.error) {
       setError(res.error);
       setLoading(false);
       return;
     }
     setAttempts(res.attempts);
+    setMockAttempts(mockRes.attempts);
     setLoading(false);
   }, [user]);
 
@@ -90,7 +98,7 @@ export function ResultsPage() {
             {pendingTests.map((act) => (
               <li key={act.id} className="py-1.5 flex items-center justify-between gap-3">
                 <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">
-                  {act.payload.testTitle}
+                  {act.kind === 'mock_submission' ? act.payload.mockTitle : act.payload.testTitle}
                 </span>
                 <span className="text-slate-600 dark:text-slate-300 tabular-nums shrink-0">
                   {act.payload.answeredCount}/{act.payload.totalQuestions} answered · Queued
@@ -101,7 +109,66 @@ export function ResultsPage() {
         </Card>
       )}
 
-      {attempts.length === 0 ? (
+      {mockAttempts.length > 0 && (
+        <section aria-labelledby="mock-results-heading" className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2
+              id="mock-results-heading"
+              className="text-base font-bold text-slate-900 dark:text-slate-100"
+            >
+              4-Subject Mock Exam Results
+            </h2>
+            <Link
+              to="/app/mocks"
+              className="text-xs font-semibold text-phosters-700 dark:text-phosters-400 hover:underline"
+            >
+              New Mock Sitting
+            </Link>
+          </div>
+          <Card padding="none" className="overflow-hidden">
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+              {mockAttempts.map((mock) => {
+                const dateLabel = mock.submitted_at
+                  ? new Date(mock.submitted_at).toLocaleDateString('en-NG', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                    })
+                  : '';
+                return (
+                  <li
+                    key={mock.id}
+                    className="flex items-center justify-between gap-2 px-5 py-4 min-h-[64px] hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+                  >
+                    <Link
+                      to={`/app/mocks/results/${mock.id}`}
+                      className="flex-1 flex items-center justify-between gap-4 min-w-0"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 truncate">
+                          {mock.title}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                          {dateLabel} · {mock.total_correct}/{mock.total_questions} correct (
+                          {Math.round(mock.percentage)}%)
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-base font-bold text-phosters-700 dark:text-phosters-400 tabular-nums">
+                          {mock.total_score_400}/400
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        </section>
+      )}
+
+      {attempts.length === 0 && mockAttempts.length === 0 ? (
         <EmptyState
           title="No graded test attempts yet"
           description="Open a lesson or topic with an attached practice test to submit your first attempt and view your score here."

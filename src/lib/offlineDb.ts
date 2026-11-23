@@ -1,6 +1,8 @@
 import type { AnnouncementFeedItem } from '../types/announcement';
 import type {
   AttemptReviewPayload,
+  MockAttemptSummary,
+  MockSessionPayload,
   StudentAttemptSummary,
   StudentTestPayload,
 } from '../types/cbt';
@@ -27,7 +29,10 @@ export type OfflineKvCategory =
   | 'subject'
   | 'lesson'
   | 'test'
-  | 'review';
+  | 'review'
+  | 'mock'
+  | 'mockAttempts'
+  | 'mockReview';
 
 export interface OfflineKvRecord<T = unknown> {
   key: string;
@@ -70,6 +75,20 @@ export type OfflineSyncAction =
         testId: string;
         testTitle: string;
         answers: Record<string, string>;
+        answeredCount: number;
+        totalQuestions: number;
+      };
+    }
+  | {
+      id: string;
+      userId: string;
+      kind: 'mock_submission';
+      createdAt: number;
+      payload: {
+        attemptId: string;
+        mockTitle: string;
+        answers: Record<string, string>;
+        elapsedSeconds: number;
         answeredCount: number;
         totalQuestions: number;
       };
@@ -456,6 +475,9 @@ export const offlineKeys = {
   lesson: (userId: string, lessonId: string) => `lesson:${userId}:${lessonId}`,
   test: (userId: string, testId: string) => `test:${userId}:${testId}`,
   review: (userId: string, attemptId: string) => `review:${userId}:${attemptId}`,
+  mock: (userId: string, attemptId: string) => `mock:${userId}:${attemptId}`,
+  mockAttempts: (userId: string) => `mockAttempts:${userId}`,
+  mockReview: (userId: string, attemptId: string) => `mockReview:${userId}:${attemptId}`,
 };
 
 export async function cacheProfile(userId: string, profile: Profile): Promise<void> {
@@ -524,3 +546,35 @@ export async function cacheStudentTest(
     pinned: pinned || Boolean(existing?.pinned),
   });
 }
+
+export async function cacheMockSession(
+  userId: string,
+  payload: MockSessionPayload,
+  pinned = false
+): Promise<void> {
+  const existing = await getOfflineKv<MockSessionPayload>(
+    offlineKeys.mock(userId, payload.attempt_id)
+  );
+  await putOfflineKv({
+    key: offlineKeys.mock(userId, payload.attempt_id),
+    userId,
+    category: 'mock',
+    value: payload,
+    updatedAt: Date.now(),
+    pinned: pinned || Boolean(existing?.pinned),
+  });
+}
+
+export async function cacheMockAttempts(
+  userId: string,
+  attempts: MockAttemptSummary[]
+): Promise<void> {
+  await putOfflineKv({
+    key: offlineKeys.mockAttempts(userId),
+    userId,
+    category: 'mockAttempts',
+    value: attempts,
+    updatedAt: Date.now(),
+  });
+}
+

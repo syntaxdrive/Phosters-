@@ -18,7 +18,7 @@ import {
   type OfflineSyncAction,
 } from '../lib/offlineDb';
 import { supabase } from '../lib/supabase';
-import type { StudentTestPayload } from '../types/cbt';
+import type { MockSessionPayload, StudentTestPayload } from '../types/cbt';
 import {
   fetchPublishedTestsForLesson,
   fetchPublishedTopicTests,
@@ -58,10 +58,23 @@ export interface SavedOfflineTestItem {
   pinned: boolean;
 }
 
+export interface SavedOfflineMockItem {
+  key: string;
+  attemptId: string;
+  title: string;
+  examName: string;
+  subjectCount: number;
+  questionCount: number;
+  durationMinutes: number;
+  updatedAt: number;
+  pinned: boolean;
+}
+
 export interface OfflineVaultSummary {
   savedSubjects: SavedOfflineSubjectItem[];
   savedLessons: SavedOfflineLessonItem[];
   savedTests: SavedOfflineTestItem[];
+  savedMocks: SavedOfflineMockItem[];
   savedMaterials: OfflineMaterialRecord[];
   pendingActions: OfflineSyncAction[];
   downloadedLessonIds: Set<string>;
@@ -162,6 +175,26 @@ export async function syncOfflineActionsForUser(userId: string): Promise<SyncRun
             continue;
           }
 
+          await removeOfflineSyncAction(action.id);
+          syncedCount += 1;
+        } else if (action.kind === 'mock_submission') {
+          const { error } = await supabase.rpc('submit_mock_attempt', {
+            p_attempt_id: action.payload.attemptId,
+            p_answers: action.payload.answers,
+            p_elapsed_seconds: action.payload.elapsedSeconds,
+          });
+
+          if (error) {
+            if (isLikelyNetworkError(error)) {
+              lastError = 'Connection dropped while submitting offline mock exam answers.';
+              break;
+            }
+            failedCount += 1;
+            lastError = error.message || `Could not submit "${action.payload.mockTitle}".`;
+            continue;
+          }
+
+          await deleteOfflineKv(offlineKeys.mock(userId, action.payload.attemptId));
           await removeOfflineSyncAction(action.id);
           syncedCount += 1;
         }
@@ -406,6 +439,10 @@ export async function removeOfflineTest(userId: string, testId: string): Promise
   await deleteOfflineKv(offlineKeys.test(userId, testId));
 }
 
+export async function removeOfflineMock(userId: string, attemptId: string): Promise<void> {
+  await deleteOfflineKv(offlineKeys.mock(userId, attemptId));
+}
+
 export async function removeOfflineMaterial(userId: string, url: string): Promise<void> {
   await deleteOfflineMaterial(userId, url);
 }
@@ -420,6 +457,7 @@ export async function getOfflineVaultSummary(userId: string): Promise<OfflineVau
   const savedSubjects: SavedOfflineSubjectItem[] = [];
   const savedLessons: SavedOfflineLessonItem[] = [];
   const savedTests: SavedOfflineTestItem[] = [];
+  const savedMocks: SavedOfflineMockItem[] = [];
   const downloadedLessonIds = new Set<string>();
   const downloadedSubjectKeys = new Set<string>();
 
@@ -479,12 +517,28 @@ export async function getOfflineVaultSummary(userId: string): Promise<OfflineVau
           pinned: Boolean(rec.pinned),
         });
       }
+    } else if (rec.category === 'mock') {
+      const payload = rec.value as MockSessionPayload;
+      if (payload?.attempt_id) {
+        savedMocks.push({
+          key: rec.key,
+          attemptId: payload.attempt_id,
+          title: payload.title,
+          examName: payload.exam_name,
+          subjectCount: payload.sections?.length ?? 0,
+          questionCount: payload.total_questions ?? 0,
+          durationMinutes: payload.duration_minutes ?? 120,
+          updatedAt: rec.updatedAt,
+          pinned: Boolean(rec.pinned),
+        });
+      }
     }
   }
 
   savedSubjects.sort((a, b) => b.updatedAt - a.updatedAt);
   savedLessons.sort((a, b) => b.updatedAt - a.updatedAt);
   savedTests.sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt);
+  savedMocks.sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt);
 
   const sortedMaterials = [...materials].sort((a, b) => b.savedAt - a.savedAt);
   const materialsBytes = sortedMaterials.reduce((sum, m) => sum + (m.sizeBytes || 0), 0);
@@ -493,6 +547,7 @@ export async function getOfflineVaultSummary(userId: string): Promise<OfflineVau
     savedSubjects,
     savedLessons,
     savedTests,
+    savedMocks,
     savedMaterials: sortedMaterials,
     pendingActions,
     downloadedLessonIds,

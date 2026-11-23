@@ -11,6 +11,7 @@ const baseAdminLinks = [
   { to: '/admin/topics', label: 'Topics', end: false },
   { to: '/admin/lessons', label: 'Lessons', end: false },
   { to: '/admin/tests', label: 'Tests', end: false },
+  { to: '/admin/mocks', label: 'Mock Exams', end: false },
   { to: '/admin/guide', label: 'Tutor Guide', end: false },
 ];
 

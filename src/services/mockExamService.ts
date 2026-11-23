@@ -1,0 +1,826 @@
+import {
+  cacheMockAttempts,
+  cacheMockSession,
+  deleteOfflineKv,
+  enqueueOfflineAction,
+  getOfflineKv,
+  isDeviceOnline,
+  isLikelyNetworkError,
+  offlineKeys,
+  putOfflineKv,
+} from '../lib/offlineDb';
+import { supabase } from '../lib/supabase';
+import type {
+  AdminMockCustomQuestionInput,
+  AdminMockExamListItem,
+  AiGenerateQuestionsRequest,
+  AiGenerateQuestionsResponse,
+  MockAttemptReviewPayload,
+  MockAttemptSummary,
+  MockExamMode,
+  MockExamRecord,
+  MockSessionPayload,
+  MockSubjectBreakdown,
+  MockSubjectReadiness,
+} from '../types/cbt';
+import type { Exam, Subject } from '../types/database';
+import type { StudentEnrolledExam } from '../types/learning';
+import { fetchStudentEnrollments } from './learningService';
+
+function isMissingMockMigrationError(err: { message?: string; code?: string } | null): boolean {
+  if (!err) return false;
+  const msg = (err.message ?? '').toLowerCase();
+  return (
+    err.code === '42P01' ||
+    err.code === 'PGRST205' ||
+    err.code === '42883' ||
+    (msg.includes('mock_') && (msg.includes('does not exist') || msg.includes('schema cache'))) ||
+    (msg.includes('start_mock_exam_session') && msg.includes('could not find'))
+  );
+}
+
+function mapMockError(err: { message?: string; code?: string } | null): string {
+  if (!err) return 'An unexpected mock exam error occurred.';
+  if (isMissingMockMigrationError(err)) {
+    return 'Mock exam tables have not been set up in Supabase yet. Run migration 012_mock_exams_schema.sql in Supabase SQL Editor.';
+  }
+  if (err.code === '42501') {
+    return 'You do not have permission for this mock exam action.';
+  }
+  if (isLikelyNetworkError(err)) {
+    return 'Network unavailable. Connect to the internet or open a saved offline mock paper.';
+  }
+  return err.message || 'Unable to process mock exam request right now.';
+}
+
+async function getAccessToken(): Promise<string | null> {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+// ============================================================================
+// Tutor / Admin AI Question Generator Client
+// ============================================================================
+
+export async function generateAiQuestionsForTutor(
+  req: AiGenerateQuestionsRequest
+): Promise<{ result: AiGenerateQuestionsResponse | null; error: string | null }> {
+  const token = await getAccessToken();
+  if (!token) {
+    return { result: null, error: 'You must be signed in as a tutor or administrator.' };
+  }
+
+  try {
+    const res = await fetch('/api/cbt/ai-generate-questions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(req),
+    });
+
+    const rawText = await res.text();
+    let parsed: (AiGenerateQuestionsResponse & { error?: string }) | { error?: string } | null = null;
+    if (rawText.trim()) {
+      try {
+        parsed = JSON.parse(rawText) as AiGenerateQuestionsResponse & { error?: string };
+      } catch {
+        parsed = null;
+      }
+    }
+
+    if (!res.ok || !parsed || !('ok' in parsed)) {
+      return {
+        result: null,
+        error:
+          (parsed && 'error' in parsed && parsed.error) ||
+          `AI question generator returned HTTP ${res.status}.`,
+      };
+    }
+
+    return { result: parsed, error: null };
+  } catch (err) {
+    return {
+      result: null,
+      error:
+        err instanceof Error
+          ? err.message
+          : 'Unable to reach server-side AI question generator.',
+    };
+  }
+}
+
+// ============================================================================
+// Student 4-Subject Mock Exam Hub, Session & Grading
+// ============================================================================
+
+export interface StudentMockHubData {
+  enrollments: StudentEnrolledExam[];
+  readinessByExamId: Map<string, MockSubjectReadiness[]>;
+  publishedMocks: MockExamRecord[];
+  attempts: MockAttemptSummary[];
+  migrationMissing: boolean;
+  fromCache: boolean;
+  error: string | null;
+}
+
+export async function fetchStudentMockHub(studentId: string): Promise<StudentMockHubData> {
+  const empty: StudentMockHubData = {
+    enrollments: [],
+    readinessByExamId: new Map(),
+    publishedMocks: [],
+    attempts: [],
+    migrationMissing: false,
+    fromCache: false,
+    error: null,
+  };
+
+  const enrollRes = await fetchStudentEnrollments(studentId);
+  if (enrollRes.error) {
+    return { ...empty, error: enrollRes.error };
+  }
+
+  const enrollments = enrollRes.enrollments;
+
+  const readCachedAttempts = async (): Promise<MockAttemptSummary[]> => {
+    const cached = await getOfflineKv<MockAttemptSummary[]>(offlineKeys.mockAttempts(studentId));
+    return cached?.value ?? [];
+  };
+
+  if (!supabase || !isDeviceOnline()) {
+    const cachedAttempts = await readCachedAttempts();
+    return {
+      ...empty,
+      enrollments,
+      attempts: cachedAttempts,
+      fromCache: true,
+    };
+  }
+
+  const sb = supabase;
+
+  try {
+    const [mocksRes, attemptsRes, ...readinessResponses] = await Promise.all([
+      sb
+        .from('mock_exams')
+        .select('*')
+        .eq('is_published', true)
+        .order('updated_at', { ascending: false }),
+      sb
+        .from('mock_attempts')
+        .select(
+          'id, exam_id, mock_exam_id, title, mode, duration_minutes, started_at, submitted_at, elapsed_seconds, total_score_400, total_correct, total_questions, percentage, subject_scores'
+        )
+        .eq('student_id', studentId)
+        .not('submitted_at', 'is', null)
+        .order('submitted_at', { ascending: false })
+        .limit(30),
+      ...enrollments.map(async (enr) => {
+        const res = await sb.rpc('get_student_mock_readiness', {
+          p_exam_id: enr.exam.id,
+        });
+        return { examId: enr.exam.id, res };
+      }),
+    ]);
+
+    const firstErr = mocksRes.error || attemptsRes.error || readinessResponses[0]?.res?.error || null;
+    if (firstErr && isMissingMockMigrationError(firstErr)) {
+      return {
+        ...empty,
+        enrollments,
+        migrationMissing: true,
+      };
+    }
+
+    if (firstErr && isLikelyNetworkError(firstErr)) {
+      const cachedAttempts = await readCachedAttempts();
+      return {
+        ...empty,
+        enrollments,
+        attempts: cachedAttempts,
+        fromCache: true,
+      };
+    }
+
+    const examNameById = new Map(enrollments.map((e) => [e.exam.id, e.exam.name]));
+
+    const readinessByExamId = new Map<string, MockSubjectReadiness[]>();
+    for (const item of readinessResponses) {
+      if (!item.res.error && Array.isArray(item.res.data)) {
+        readinessByExamId.set(item.examId, item.res.data as MockSubjectReadiness[]);
+      }
+    }
+
+    const attempts: MockAttemptSummary[] = ((attemptsRes.data ?? []) as Array<Record<string, unknown>>).map(
+      (row) => ({
+        id: String(row.id),
+        exam_id: String(row.exam_id),
+        exam_name: examNameById.get(String(row.exam_id)),
+        mock_exam_id: row.mock_exam_id ? String(row.mock_exam_id) : null,
+        title: String(row.title),
+        mode: (row.mode as MockExamMode) || 'full_mock',
+        duration_minutes: Number(row.duration_minutes) || 120,
+        started_at: String(row.started_at),
+        submitted_at: row.submitted_at ? String(row.submitted_at) : null,
+        elapsed_seconds: row.elapsed_seconds !== null ? Number(row.elapsed_seconds) : null,
+        total_score_400: Number(row.total_score_400) || 0,
+        total_correct: Number(row.total_correct) || 0,
+        total_questions: Number(row.total_questions) || 0,
+        percentage: Number(row.percentage) || 0,
+        subject_scores: Array.isArray(row.subject_scores)
+          ? (row.subject_scores as MockSubjectBreakdown[])
+          : [],
+      })
+    );
+
+    void cacheMockAttempts(studentId, attempts);
+
+    return {
+      enrollments,
+      readinessByExamId,
+      publishedMocks: (mocksRes.data ?? []) as MockExamRecord[],
+      attempts,
+      migrationMissing: false,
+      fromCache: false,
+      error: null,
+    };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      const cachedAttempts = await readCachedAttempts();
+      return {
+        ...empty,
+        enrollments,
+        attempts: cachedAttempts,
+        fromCache: true,
+      };
+    }
+    return {
+      ...empty,
+      enrollments,
+      error: 'Unable to load mock exam center right now.',
+    };
+  }
+}
+
+export async function fetchStudentMockAttempts(
+  studentId: string,
+  limit = 20
+): Promise<{ attempts: MockAttemptSummary[]; fromCache?: boolean; error: string | null }> {
+  const readCache = async () => {
+    const cached = await getOfflineKv<MockAttemptSummary[]>(offlineKeys.mockAttempts(studentId));
+    return cached?.value ?? [];
+  };
+
+  if (!supabase || !isDeviceOnline()) {
+    return { attempts: (await readCache()).slice(0, limit), fromCache: true, error: null };
+  }
+
+  try {
+    const [attemptsRes, examsRes] = await Promise.all([
+      supabase
+        .from('mock_attempts')
+        .select(
+          'id, exam_id, mock_exam_id, title, mode, duration_minutes, started_at, submitted_at, elapsed_seconds, total_score_400, total_correct, total_questions, percentage, subject_scores'
+        )
+        .eq('student_id', studentId)
+        .not('submitted_at', 'is', null)
+        .order('submitted_at', { ascending: false })
+        .limit(limit),
+      supabase.from('exams').select('id, name'),
+    ]);
+
+    if (attemptsRes.error) {
+      if (isMissingMockMigrationError(attemptsRes.error)) {
+        return { attempts: [], error: null };
+      }
+      if (isLikelyNetworkError(attemptsRes.error)) {
+        return { attempts: (await readCache()).slice(0, limit), fromCache: true, error: null };
+      }
+      return { attempts: [], error: mapMockError(attemptsRes.error) };
+    }
+
+    const examNameMap = new Map(
+      ((examsRes.data ?? []) as Array<Pick<Exam, 'id' | 'name'>>).map((e) => [e.id, e.name])
+    );
+
+    const attempts: MockAttemptSummary[] = ((attemptsRes.data ?? []) as Array<Record<string, unknown>>).map(
+      (row) => ({
+        id: String(row.id),
+        exam_id: String(row.exam_id),
+        exam_name: examNameMap.get(String(row.exam_id)),
+        mock_exam_id: row.mock_exam_id ? String(row.mock_exam_id) : null,
+        title: String(row.title),
+        mode: (row.mode as MockExamMode) || 'full_mock',
+        duration_minutes: Number(row.duration_minutes) || 120,
+        started_at: String(row.started_at),
+        submitted_at: row.submitted_at ? String(row.submitted_at) : null,
+        elapsed_seconds: row.elapsed_seconds !== null ? Number(row.elapsed_seconds) : null,
+        total_score_400: Number(row.total_score_400) || 0,
+        total_correct: Number(row.total_correct) || 0,
+        total_questions: Number(row.total_questions) || 0,
+        percentage: Number(row.percentage) || 0,
+        subject_scores: Array.isArray(row.subject_scores)
+          ? (row.subject_scores as MockSubjectBreakdown[])
+          : [],
+      })
+    );
+
+    void cacheMockAttempts(studentId, attempts);
+    return { attempts, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      return { attempts: (await readCache()).slice(0, limit), fromCache: true, error: null };
+    }
+    return { attempts: [], error: 'Network error while loading mock exam history.' };
+  }
+}
+
+export async function startMockExamSession(params: {
+  examId: string;
+  mockExamId?: string | null;
+  mode?: MockExamMode;
+  studentId?: string;
+  pinOffline?: boolean;
+}): Promise<{ session: MockSessionPayload | null; error: string | null }> {
+  if (!supabase) return { session: null, error: 'Supabase is not configured.' };
+  if (!isDeviceOnline()) {
+    return {
+      session: null,
+      error:
+        'Connect to the internet to assemble a new mock paper, or open a paper you already saved in Offline Study.',
+    };
+  }
+
+  try {
+    const { data, error } = await supabase.rpc('start_mock_exam_session', {
+      p_exam_id: params.examId,
+      p_mock_exam_id: params.mockExamId ?? null,
+      p_mode: params.mode ?? 'full_mock',
+    });
+
+    if (error) {
+      return { session: null, error: mapMockError(error) };
+    }
+
+    const session = data as MockSessionPayload;
+    if (params.studentId && session?.attempt_id) {
+      await cacheMockSession(params.studentId, session, Boolean(params.pinOffline));
+    }
+    return { session, error: null };
+  } catch {
+    return { session: null, error: 'Failed to generate mock exam session.' };
+  }
+}
+
+export async function fetchPendingMockSession(
+  attemptId: string,
+  studentId?: string
+): Promise<{
+  session: MockSessionPayload | null;
+  alreadySubmitted?: boolean;
+  fromCache?: boolean;
+  error: string | null;
+}> {
+  const readCache = async (): Promise<MockSessionPayload | null> => {
+    if (!studentId) return null;
+    const cached = await getOfflineKv<MockSessionPayload>(offlineKeys.mock(studentId, attemptId));
+    return cached?.value ?? null;
+  };
+
+  if (!supabase || !isDeviceOnline()) {
+    const cached = await readCache();
+    if (cached) return { session: cached, fromCache: true, error: null };
+    return {
+      session: null,
+      error: 'You are offline and this mock paper was not saved on this device.',
+    };
+  }
+
+  try {
+    const { data, error } = await supabase.rpc('get_pending_mock_session', {
+      p_attempt_id: attemptId,
+    });
+
+    if (error) {
+      if ((error.message || '').includes('ALREADY_SUBMITTED')) {
+        return { session: null, alreadySubmitted: true, error: null };
+      }
+      if (isLikelyNetworkError(error)) {
+        const cached = await readCache();
+        if (cached) return { session: cached, fromCache: true, error: null };
+      }
+      return { session: null, error: mapMockError(error) };
+    }
+
+    const session = data as MockSessionPayload;
+    if (studentId && session?.attempt_id) {
+      void cacheMockSession(studentId, session, false);
+    }
+    return { session, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      const cached = await readCache();
+      if (cached) return { session: cached, fromCache: true, error: null };
+    }
+    return { session: null, error: 'Network error while loading mock exam session.' };
+  }
+}
+
+export async function submitMockExamAttempt(
+  attemptId: string,
+  answers: Record<string, string>,
+  elapsedSeconds: number,
+  offlineMeta?: {
+    studentId?: string;
+    mockTitle?: string;
+    totalQuestions?: number;
+  }
+): Promise<{ submittedId: string | null; queuedOffline?: boolean; error: string | null }> {
+  if (!supabase) return { submittedId: null, error: 'Supabase is not configured.' };
+
+  const queueSubmission = async (): Promise<{
+    submittedId: string | null;
+    queuedOffline?: boolean;
+    error: string | null;
+  }> => {
+    if (!offlineMeta?.studentId) {
+      return {
+        submittedId: null,
+        error: 'You are offline. Reconnect to submit your mock exam.',
+      };
+    }
+
+    const answeredCount = Object.keys(answers).filter((k) => Boolean(answers[k])).length;
+    await enqueueOfflineAction({
+      id: `ms:${offlineMeta.studentId}:${attemptId}`,
+      userId: offlineMeta.studentId,
+      kind: 'mock_submission',
+      createdAt: Date.now(),
+      payload: {
+        attemptId,
+        mockTitle: offlineMeta.mockTitle ?? '4-Subject CBT Mock',
+        answers,
+        elapsedSeconds: Math.max(0, Math.round(elapsedSeconds)),
+        answeredCount,
+        totalQuestions: offlineMeta.totalQuestions ?? answeredCount,
+      },
+    });
+    return { submittedId: null, queuedOffline: true, error: null };
+  };
+
+  if (!isDeviceOnline()) {
+    return queueSubmission();
+  }
+
+  try {
+    const { data, error } = await supabase.rpc('submit_mock_attempt', {
+      p_attempt_id: attemptId,
+      p_answers: answers,
+      p_elapsed_seconds: Math.max(0, Math.round(elapsedSeconds)),
+    });
+
+    if (error) {
+      if (isLikelyNetworkError(error)) {
+        return queueSubmission();
+      }
+      return { submittedId: null, error: mapMockError(error) };
+    }
+
+    if (offlineMeta?.studentId) {
+      void deleteOfflineKv(offlineKeys.mock(offlineMeta.studentId, attemptId));
+    }
+
+    return { submittedId: data as string, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      return queueSubmission();
+    }
+    return { submittedId: null, error: 'Failed to submit mock exam. Please try again.' };
+  }
+}
+
+export async function fetchMockAttemptReview(
+  attemptId: string,
+  studentId?: string
+): Promise<{ review: MockAttemptReviewPayload | null; fromCache?: boolean; error: string | null }> {
+  const readCache = async (): Promise<MockAttemptReviewPayload | null> => {
+    if (!studentId) return null;
+    const cached = await getOfflineKv<MockAttemptReviewPayload>(
+      offlineKeys.mockReview(studentId, attemptId)
+    );
+    return cached?.value ?? null;
+  };
+
+  if (!supabase || !isDeviceOnline()) {
+    const cached = await readCache();
+    if (cached) return { review: cached, fromCache: true, error: null };
+    return {
+      review: null,
+      error: 'You are offline and this mock exam result has not been opened online on this device yet.',
+    };
+  }
+
+  try {
+    const { data, error } = await supabase.rpc('get_mock_attempt_review', {
+      p_attempt_id: attemptId,
+    });
+
+    if (error) {
+      if (isLikelyNetworkError(error)) {
+        const cached = await readCache();
+        if (cached) return { review: cached, fromCache: true, error: null };
+      }
+      return { review: null, error: mapMockError(error) };
+    }
+
+    const review = data as MockAttemptReviewPayload;
+    if (studentId && review) {
+      void putOfflineKv<MockAttemptReviewPayload>({
+        key: offlineKeys.mockReview(studentId, attemptId),
+        userId: studentId,
+        category: 'mockReview',
+        value: review,
+        updatedAt: Date.now(),
+      });
+    }
+
+    return { review, error: null };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      const cached = await readCache();
+      if (cached) return { review: cached, fromCache: true, error: null };
+    }
+    return { review: null, error: 'Network error while loading mock exam score breakdown.' };
+  }
+}
+
+// ============================================================================
+// Admin / Tutor Mock Exam Management
+// ============================================================================
+
+export async function fetchAdminMockExamsData(): Promise<{
+  exams: Exam[];
+  subjects: Subject[];
+  mockExams: AdminMockExamListItem[];
+  bankCountsBySubject: Map<string, number>;
+  migrationMissing: boolean;
+  error: string | null;
+}> {
+  if (!supabase) {
+    return {
+      exams: [],
+      subjects: [],
+      mockExams: [],
+      bankCountsBySubject: new Map(),
+      migrationMissing: false,
+      error: 'Supabase is not configured.',
+    };
+  }
+
+  const [examsRes, subjectsRes, mocksRes, customQRes, bankRes] = await Promise.all([
+    supabase.from('exams').select('*').order('name', { ascending: true }),
+    supabase.from('subjects').select('*').order('name', { ascending: true }),
+    supabase.from('mock_exams').select('*').order('updated_at', { ascending: false }),
+    supabase.from('mock_exam_custom_questions').select('id, mock_exam_id'),
+    supabase
+      .from('question_bank')
+      .select('subject_id')
+      .eq('status', 'approved')
+      .eq('needs_diagram', false),
+  ]);
+
+  const mockErr = mocksRes.error || customQRes.error;
+  if (mockErr && isMissingMockMigrationError(mockErr)) {
+    return {
+      exams: (examsRes.data ?? []) as Exam[],
+      subjects: (subjectsRes.data ?? []) as Subject[],
+      mockExams: [],
+      bankCountsBySubject: new Map(),
+      migrationMissing: true,
+      error: null,
+    };
+  }
+
+  const firstErr = examsRes.error || subjectsRes.error || mockErr;
+  if (firstErr) {
+    return {
+      exams: [],
+      subjects: [],
+      mockExams: [],
+      bankCountsBySubject: new Map(),
+      migrationMissing: false,
+      error: mapMockError(firstErr),
+    };
+  }
+
+  const exams = (examsRes.data ?? []) as Exam[];
+  const subjects = (subjectsRes.data ?? []) as Subject[];
+  const examNameMap = new Map(exams.map((e) => [e.id, e.name]));
+
+  const customCounts = new Map<string, number>();
+  for (const row of (customQRes.data ?? []) as Array<{ id: string; mock_exam_id: string }>) {
+    customCounts.set(row.mock_exam_id, (customCounts.get(row.mock_exam_id) ?? 0) + 1);
+  }
+
+  const bankCountsBySubject = new Map<string, number>();
+  if (!bankRes.error && bankRes.data) {
+    for (const row of bankRes.data as Array<{ subject_id: string | null }>) {
+      if (!row.subject_id) continue;
+      bankCountsBySubject.set(row.subject_id, (bankCountsBySubject.get(row.subject_id) ?? 0) + 1);
+    }
+  }
+
+  const mockExams: AdminMockExamListItem[] = ((mocksRes.data ?? []) as MockExamRecord[]).map(
+    (m) => ({
+      ...m,
+      examName: examNameMap.get(m.exam_id) ?? 'Examination',
+      customQuestionCount: customCounts.get(m.id) ?? 0,
+    })
+  );
+
+  return {
+    exams,
+    subjects,
+    mockExams,
+    bankCountsBySubject,
+    migrationMissing: false,
+    error: null,
+  };
+}
+
+export async function fetchMockCustomQuestionsForAdmin(mockExamId: string): Promise<{
+  questions: AdminMockCustomQuestionInput[];
+  error: string | null;
+}> {
+  if (!supabase) return { questions: [], error: 'Supabase is not configured.' };
+
+  const qRes = await supabase
+    .from('mock_exam_custom_questions')
+    .select('*')
+    .eq('mock_exam_id', mockExamId)
+    .order('display_order', { ascending: true });
+
+  if (qRes.error) {
+    return { questions: [], error: mapMockError(qRes.error) };
+  }
+
+  const rows = qRes.data ?? [];
+  if (rows.length === 0) return { questions: [], error: null };
+
+  const ids = rows.map((r) => r.id);
+  const optRes = await supabase
+    .from('mock_exam_custom_options')
+    .select('*')
+    .in('custom_question_id', ids)
+    .order('display_order', { ascending: true });
+
+  if (optRes.error) {
+    return { questions: [], error: mapMockError(optRes.error) };
+  }
+
+  const optsByQ = new Map<string, typeof optRes.data>();
+  for (const o of optRes.data ?? []) {
+    const arr = optsByQ.get(o.custom_question_id) ?? [];
+    arr.push(o);
+    optsByQ.set(o.custom_question_id, arr);
+  }
+
+  const questions: AdminMockCustomQuestionInput[] = rows.map((q) => ({
+    subject_id: q.subject_id,
+    question_text: q.question_text,
+    explanation: q.explanation ?? '',
+    difficulty: q.difficulty,
+    points: q.points,
+    options: (optsByQ.get(q.id) ?? []).map((o) => ({
+      localKey: o.id,
+      option_key: o.option_key,
+      option_text: o.option_text,
+      is_correct: o.is_correct,
+    })),
+  }));
+
+  return { questions, error: null };
+}
+
+export async function saveAdminMockExam(input: {
+  id?: string;
+  exam_id: string;
+  title: string;
+  description: string;
+  duration_minutes: number;
+  english_question_count: number;
+  other_subject_question_count: number;
+  uses_question_bank: boolean;
+  exclude_diagrams: boolean;
+  is_published: boolean;
+  show_explanations_after_submission: boolean;
+  created_by: string;
+  customQuestions: AdminMockCustomQuestionInput[];
+}): Promise<{ mockExamId: string | null; error: string | null }> {
+  if (!supabase) return { mockExamId: null, error: 'Supabase is not configured.' };
+  if (input.title.trim().length < 2) {
+    return { mockExamId: null, error: 'Mock exam title must be at least 2 characters.' };
+  }
+
+  for (let i = 0; i < input.customQuestions.length; i++) {
+    const q = input.customQuestions[i];
+    if (!q.question_text.trim()) {
+      return { mockExamId: null, error: `Custom question #${i + 1} needs question text.` };
+    }
+    if (q.options.filter((o) => o.option_text.trim()).length < 2) {
+      return {
+        mockExamId: null,
+        error: `Custom question #${i + 1} needs at least 2 answer options.`,
+      };
+    }
+    if (q.options.filter((o) => o.is_correct).length !== 1) {
+      return {
+        mockExamId: null,
+        error: `Custom question #${i + 1} must have exactly one correct option.`,
+      };
+    }
+  }
+
+  const payload = {
+    exam_id: input.exam_id,
+    title: input.title.trim(),
+    description: input.description.trim() || null,
+    duration_minutes: Math.max(5, Math.min(360, Math.round(input.duration_minutes) || 120)),
+    english_question_count: Math.max(1, Math.min(100, Math.round(input.english_question_count) || 60)),
+    other_subject_question_count: Math.max(
+      1,
+      Math.min(100, Math.round(input.other_subject_question_count) || 40)
+    ),
+    uses_question_bank: input.uses_question_bank,
+    exclude_diagrams: input.exclude_diagrams,
+    is_published: input.is_published,
+    show_explanations_after_submission: input.show_explanations_after_submission,
+  };
+
+  let mockExamId = input.id ?? null;
+
+  if (mockExamId) {
+    const { error } = await supabase.from('mock_exams').update(payload).eq('id', mockExamId);
+    if (error) return { mockExamId: null, error: mapMockError(error) };
+
+    const delRes = await supabase
+      .from('mock_exam_custom_questions')
+      .delete()
+      .eq('mock_exam_id', mockExamId);
+    if (delRes.error) return { mockExamId, error: mapMockError(delRes.error) };
+  } else {
+    const { data, error } = await supabase
+      .from('mock_exams')
+      .insert({ ...payload, created_by: input.created_by })
+      .select('id')
+      .single();
+    if (error || !data) return { mockExamId: null, error: mapMockError(error) };
+    mockExamId = data.id;
+  }
+
+  for (let qi = 0; qi < input.customQuestions.length; qi++) {
+    const q = input.customQuestions[qi];
+    const qRes = await supabase
+      .from('mock_exam_custom_questions')
+      .insert({
+        mock_exam_id: mockExamId,
+        subject_id: q.subject_id,
+        question_text: q.question_text.trim(),
+        explanation: q.explanation.trim() || null,
+        difficulty: q.difficulty,
+        points: Math.max(1, q.points || 1),
+        display_order: qi + 1,
+      })
+      .select('id')
+      .single();
+
+    if (qRes.error || !qRes.data) {
+      return { mockExamId, error: mapMockError(qRes.error) };
+    }
+
+    const optRows = q.options
+      .filter((o) => o.option_text.trim())
+      .map((o, oi) => ({
+        custom_question_id: qRes.data.id,
+        option_key: o.option_key || String.fromCharCode(65 + oi),
+        option_text: o.option_text.trim(),
+        is_correct: o.is_correct,
+        display_order: oi + 1,
+      }));
+
+    const optRes = await supabase.from('mock_exam_custom_options').insert(optRows);
+    if (optRes.error) {
+      return { mockExamId, error: mapMockError(optRes.error) };
+    }
+  }
+
+  return { mockExamId, error: null };
+}
+
+export async function deleteAdminMockExam(mockExamId: string): Promise<{ error: string | null }> {
+  if (!supabase) return { error: 'Supabase is not configured.' };
+  const { error } = await supabase.from('mock_exams').delete().eq('id', mockExamId);
+  return { error: error ? mapMockError(error) : null };
+}

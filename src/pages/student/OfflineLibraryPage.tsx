@@ -21,6 +21,7 @@ import {
   formatBytes,
   removeOfflineLesson,
   removeOfflineMaterial,
+  removeOfflineMock,
   removeOfflineSubject,
   removeOfflineTest,
 } from '../../services/offlineSyncService';
@@ -62,11 +63,13 @@ export function OfflineLibraryPage() {
   const savedSubjects = summary?.savedSubjects ?? [];
   const savedLessons = summary?.savedLessons ?? [];
   const savedTests = summary?.savedTests ?? [];
+  const savedMocks = summary?.savedMocks ?? [];
   const savedMaterials = summary?.savedMaterials ?? [];
   const hasAnySavedData =
     savedSubjects.length > 0 ||
     savedLessons.length > 0 ||
     savedTests.length > 0 ||
+    savedMocks.length > 0 ||
     savedMaterials.length > 0 ||
     pendingActions.length > 0;
 
@@ -137,6 +140,14 @@ export function OfflineLibraryPage() {
     if (!user) return;
     setBusyKey(key);
     await removeOfflineTest(user.id, testId);
+    await refreshVault();
+    setBusyKey(null);
+  }
+
+  async function handleRemoveMock(attemptId: string, key: string) {
+    if (!user) return;
+    setBusyKey(key);
+    await removeOfflineMock(user.id, attemptId);
     await refreshVault();
     setBusyKey(null);
   }
@@ -229,9 +240,9 @@ export function OfflineLibraryPage() {
           </p>
         </Card>
         <Card padding="md">
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Practice tests</p>
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Tests &amp; mocks</p>
           <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100 tabular-nums">
-            {savedTests.length}
+            {savedTests.length + savedMocks.length}
           </p>
         </Card>
         <Card padding="md">
@@ -274,6 +285,7 @@ export function OfflineLibraryPage() {
                   minute: '2-digit',
                 });
                 const isTest = act.kind === 'test_submission';
+                const isMock = act.kind === 'mock_submission';
                 return (
                   <li
                     key={act.id}
@@ -281,12 +293,14 @@ export function OfflineLibraryPage() {
                   >
                     <div className="min-w-0 space-y-0.5">
                       <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                        {isTest
-                          ? `Test submission: ${act.payload.testTitle}`
-                          : `Lesson progress: ${act.payload.lessonTitle || 'Lesson update'}`}
+                        {isMock
+                          ? `Mock exam submission: ${act.payload.mockTitle}`
+                          : isTest
+                            ? `Test submission: ${act.payload.testTitle}`
+                            : `Lesson progress: ${act.payload.lessonTitle || 'Lesson update'}`}
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-                        {isTest
+                        {isMock || isTest
                           ? `${act.payload.answeredCount} of ${act.payload.totalQuestions} questions answered · Queued ${when}`
                           : `${act.payload.isCompleted ? 'Marked completed' : 'Marked incomplete'} · Queued ${when}`}
                       </p>
@@ -526,6 +540,61 @@ export function OfflineLibraryPage() {
                         aria-label={`Remove ${tst.title} offline copy`}
                         disabled={busyKey === tst.key}
                         onClick={() => void handleRemoveTest(tst.testId, tst.key)}
+                        className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            </section>
+          )}
+
+          {/* Saved CBT Mock Papers */}
+          {savedMocks.length > 0 && (
+            <section aria-labelledby="saved-mocks-heading" className="space-y-3">
+              <div className="space-y-0.5">
+                <h2
+                  id="saved-mocks-heading"
+                  className="text-base font-bold text-slate-900 dark:text-slate-100"
+                >
+                  Offline 4-subject mock papers ({savedMocks.length})
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Full timed mock exams saved on your device. Answer keys are never stored offline.
+                </p>
+              </div>
+              <Card padding="none" className="overflow-hidden">
+                <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {savedMocks.map((mock) => (
+                    <li
+                      key={mock.key}
+                      className="flex items-center justify-between gap-3 px-5 py-3.5"
+                    >
+                      <Link
+                        to={`/app/mocks/${mock.attemptId}`}
+                        className="flex items-start gap-3 min-w-0 flex-1 group"
+                      >
+                        <CheckSquare
+                          className="h-4 w-4 text-phosters-700 dark:text-phosters-400 shrink-0 mt-1"
+                          aria-hidden="true"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 group-hover:text-phosters-700 dark:group-hover:text-phosters-400 truncate">
+                            {mock.title}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                            {mock.examName} · {mock.subjectCount} subjects · {mock.questionCount}{' '}
+                            questions · {mock.durationMinutes} mins
+                          </p>
+                        </div>
+                      </Link>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${mock.title} offline paper`}
+                        disabled={busyKey === mock.key}
+                        onClick={() => void handleRemoveMock(mock.attemptId, mock.key)}
                         className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
                       >
                         <Trash2 className="h-4 w-4" aria-hidden="true" />

@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Award,
   BookOpen,
+  Clock,
   FileText,
   HardDrive,
   Home,
@@ -35,6 +36,7 @@ interface AppShellProps {
 const studentNavItems = [
   { to: '/app', label: 'Home', icon: Home, end: true },
   { to: '/app/subjects', label: 'Subjects', icon: BookOpen, end: false },
+  { to: '/app/mocks', label: 'Mocks', icon: Clock, end: false },
   { to: '/app/results', label: 'Results', icon: Award, end: false },
   { to: '/app/profile', label: 'Profile', icon: User, end: false },
 ];
@@ -636,7 +638,7 @@ export function AppShell({ children }: AppShellProps) {
           aria-label="Mobile navigation"
           className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 md:hidden pb-safe"
         >
-          <div className="grid grid-cols-4 items-center h-14">
+          <div className="grid grid-cols-5 items-center h-14">
             {studentNavItems.map((item) => {
               const Icon = item.icon;
               return (

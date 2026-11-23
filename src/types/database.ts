@@ -819,6 +819,203 @@ export type Database = {
         };
         Relationships: [];
       };
+      mock_exams: {
+        Row: {
+          id: string;
+          exam_id: string;
+          title: string;
+          description: string | null;
+          duration_minutes: number;
+          english_question_count: number;
+          other_subject_question_count: number;
+          uses_question_bank: boolean;
+          exclude_diagrams: boolean;
+          is_published: boolean;
+          show_explanations_after_submission: boolean;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          exam_id: string;
+          title: string;
+          description?: string | null;
+          duration_minutes?: number;
+          english_question_count?: number;
+          other_subject_question_count?: number;
+          uses_question_bank?: boolean;
+          exclude_diagrams?: boolean;
+          is_published?: boolean;
+          show_explanations_after_submission?: boolean;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          exam_id?: string;
+          title?: string;
+          description?: string | null;
+          duration_minutes?: number;
+          english_question_count?: number;
+          other_subject_question_count?: number;
+          uses_question_bank?: boolean;
+          exclude_diagrams?: boolean;
+          is_published?: boolean;
+          show_explanations_after_submission?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      mock_exam_custom_questions: {
+        Row: {
+          id: string;
+          mock_exam_id: string;
+          subject_id: string;
+          question_text: string;
+          explanation: string | null;
+          difficulty: 'easy' | 'medium' | 'hard';
+          points: number;
+          display_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          mock_exam_id: string;
+          subject_id: string;
+          question_text: string;
+          explanation?: string | null;
+          difficulty?: 'easy' | 'medium' | 'hard';
+          points?: number;
+          display_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          subject_id?: string;
+          question_text?: string;
+          explanation?: string | null;
+          difficulty?: 'easy' | 'medium' | 'hard';
+          points?: number;
+          display_order?: number;
+        };
+        Relationships: [];
+      };
+      mock_exam_custom_options: {
+        Row: {
+          id: string;
+          custom_question_id: string;
+          option_key: string;
+          option_text: string;
+          is_correct: boolean;
+          display_order: number;
+        };
+        Insert: {
+          id?: string;
+          custom_question_id: string;
+          option_key: string;
+          option_text: string;
+          is_correct?: boolean;
+          display_order?: number;
+        };
+        Update: {
+          option_key?: string;
+          option_text?: string;
+          is_correct?: boolean;
+          display_order?: number;
+        };
+        Relationships: [];
+      };
+      mock_attempts: {
+        Row: {
+          id: string;
+          student_id: string;
+          exam_id: string;
+          mock_exam_id: string | null;
+          title: string;
+          mode: 'full_mock' | 'mini_mock' | 'published_mock';
+          duration_minutes: number;
+          started_at: string;
+          submitted_at: string | null;
+          elapsed_seconds: number | null;
+          total_score_400: number;
+          total_correct: number;
+          total_questions: number;
+          percentage: number;
+          show_explanations_after_submission: boolean;
+          subject_scores: unknown;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          student_id: string;
+          exam_id: string;
+          mock_exam_id?: string | null;
+          title: string;
+          mode?: 'full_mock' | 'mini_mock' | 'published_mock';
+          duration_minutes?: number;
+          started_at?: string;
+          submitted_at?: string | null;
+          elapsed_seconds?: number | null;
+          total_score_400?: number;
+          total_correct?: number;
+          total_questions?: number;
+          percentage?: number;
+          show_explanations_after_submission?: boolean;
+          subject_scores?: unknown;
+          created_at?: string;
+        };
+        Update: {
+          submitted_at?: string | null;
+          elapsed_seconds?: number | null;
+          total_score_400?: number;
+          total_correct?: number;
+          total_questions?: number;
+          percentage?: number;
+          subject_scores?: unknown;
+        };
+        Relationships: [];
+      };
+      mock_attempt_items: {
+        Row: {
+          id: string;
+          attempt_id: string;
+          subject_id: string;
+          subject_name: string;
+          subject_slug: string;
+          section_order: number;
+          question_order: number;
+          question_source: 'bank' | 'custom';
+          source_question_id: string | null;
+          question_text: string;
+          explanation: string | null;
+          options_json: unknown;
+          selected_option_key: string | null;
+          correct_option_key: string;
+          is_correct: boolean;
+        };
+        Insert: {
+          id?: string;
+          attempt_id: string;
+          subject_id: string;
+          subject_name: string;
+          subject_slug: string;
+          section_order?: number;
+          question_order?: number;
+          question_source?: 'bank' | 'custom';
+          source_question_id?: string | null;
+          question_text: string;
+          explanation?: string | null;
+          options_json?: unknown;
+          selected_option_key?: string | null;
+          correct_option_key: string;
+          is_correct?: boolean;
+        };
+        Update: {
+          selected_option_key?: string | null;
+          is_correct?: boolean;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -956,6 +1153,40 @@ export type Database = {
           user_id: string;
           role: string;
         }>;
+      };
+      get_student_mock_readiness: {
+        Args: {
+          p_exam_id?: string | null;
+        };
+        Returns: unknown;
+      };
+      start_mock_exam_session: {
+        Args: {
+          p_exam_id: string;
+          p_mock_exam_id?: string | null;
+          p_mode?: string;
+        };
+        Returns: unknown;
+      };
+      get_pending_mock_session: {
+        Args: {
+          p_attempt_id: string;
+        };
+        Returns: unknown;
+      };
+      submit_mock_attempt: {
+        Args: {
+          p_attempt_id: string;
+          p_answers: Record<string, string>;
+          p_elapsed_seconds?: number | null;
+        };
+        Returns: string;
+      };
+      get_mock_attempt_review: {
+        Args: {
+          p_attempt_id: string;
+        };
+        Returns: unknown;
       };
     };
     Enums: {

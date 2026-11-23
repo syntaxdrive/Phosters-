@@ -19,6 +19,8 @@ import {
   parseQuestionChunkWithGemini,
   verifySuperAdminAuthorization,
 } from './server/questionBankEngine.ts';
+import { generateTutorQuestionsWithGemini } from './server/aiTestEngine.ts';
+import type { AiGenerateQuestionsRequest } from './src/types/cbt.ts';
 import type { RemindInactiveInput, SendPushPayload } from './src/types/push.ts';
 import type {
   ConvertDocumentRequest,
@@ -209,6 +211,33 @@ async function createServer() {
           err instanceof Error
             ? `Question parsing error: ${err.message}`
             : 'Unexpected question parsing error.',
+      });
+    }
+  });
+
+  app.post('/api/cbt/ai-generate-questions', async (req, res) => {
+    try {
+      const authCheck = await verifyAdminAuthorization(req.headers.authorization);
+      if (!authCheck.ok) {
+        res.status(authCheck.status).json({ error: authCheck.error });
+        return;
+      }
+
+      const body = req.body as AiGenerateQuestionsRequest | undefined;
+      if (!body || typeof body !== 'object' || typeof body.subjectName !== 'string') {
+        res.status(400).json({ error: 'Invalid AI question generation payload.' });
+        return;
+      }
+
+      const result = await generateTutorQuestionsWithGemini(body);
+      res.status(result.status).json(result.body);
+    } catch (err) {
+      console.error('Express /api/cbt/ai-generate-questions error:', err);
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? `AI question generator error: ${err.message}`
+            : 'Unexpected AI question generation error.',
       });
     }
   });
