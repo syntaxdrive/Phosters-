@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, CloudUpload } from 'lucide-react';
+import { ArrowLeft, Calculator, CheckCircle2, CloudUpload } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import {
   fetchTestForTaking,
   submitStudentTestAttempt,
 } from '../../services/cbtService';
 import type { StudentTestPayload } from '../../types/cbt';
+import { JambCalculator } from '../../components/cbt/JambCalculator';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -24,6 +25,9 @@ export function TestTakePage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmUnanswered, setConfirmUnanswered] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [activeQuestionIdx, setActiveQuestionIdx] = useState(0);
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const questionRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [queuedOfflineState, setQueuedOfflineState] = useState<{
     testTitle: string;
     answeredCount: number;
@@ -48,11 +52,49 @@ export function TestTakePage() {
     void loadTest();
   }, [loadTest]);
 
-  function selectOption(questionId: string, optionId: string) {
+  const selectOption = useCallback((questionId: string, optionId: string) => {
     setConfirmUnanswered(false);
     setSubmitError(null);
     setAnswers((prev) => ({ ...prev, [questionId]: optionId }));
-  }
+  }, []);
+
+  useEffect(() => {
+    if (!payload || payload.questions.length === 0 || queuedOfflineState) return;
+    const questions = payload.questions;
+
+    const handleKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+
+      const activeQ = questions[activeQuestionIdx];
+      if (!activeQ) return;
+
+      const upper = e.key.toUpperCase();
+      if (['A', 'B', 'C', 'D', 'E'].includes(upper)) {
+        const matched = activeQ.options.find(
+          (opt) => opt.option_key.toUpperCase() === upper
+        );
+        if (matched) {
+          selectOption(activeQ.id, matched.id);
+        }
+      } else if (e.key === 'ArrowRight' || upper === 'N') {
+        const nextIdx = Math.min(questions.length - 1, activeQuestionIdx + 1);
+        if (nextIdx !== activeQuestionIdx) {
+          setActiveQuestionIdx(nextIdx);
+          questionRefs.current[nextIdx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      } else if (e.key === 'ArrowLeft' || upper === 'P') {
+        const prevIdx = Math.max(0, activeQuestionIdx - 1);
+        if (prevIdx !== activeQuestionIdx) {
+          setActiveQuestionIdx(prevIdx);
+          questionRefs.current[prevIdx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [activeQuestionIdx, payload, queuedOfflineState, selectOption]);
 
   async function executeSubmit() {
     if (!payload) return;
@@ -164,7 +206,7 @@ export function TestTakePage() {
           <span>{test.lesson_id ? 'Back to Lesson' : 'Back to Subjects'}</span>
         </Link>
 
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
           <div className="space-y-1">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
               {test.title}
@@ -173,10 +215,25 @@ export function TestTakePage() {
               <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{test.description}</p>
             )}
           </div>
-          <p className="text-sm font-medium text-slate-600 dark:text-slate-400 tabular-nums shrink-0">
-            Answered {answeredCount} of {questions.length}
-          </p>
+          <div className="flex items-center gap-3 shrink-0">
+            <p className="text-sm font-medium text-slate-600 dark:text-slate-400 tabular-nums">
+              Answered {answeredCount} of {questions.length}
+            </p>
+            <Button
+              type="button"
+              variant={calculatorOpen ? 'primary' : 'secondary'}
+              onClick={() => setCalculatorOpen((v) => !v)}
+            >
+              <Calculator className="h-4 w-4" aria-hidden="true" />
+              <span>Calculator</span>
+            </Button>
+          </div>
         </div>
+        {questions.length > 0 && (
+          <p className="hidden sm:block text-xs text-slate-400 dark:text-slate-50">
+            CBT keyboard practice: A–D select answer · N / P move between questions
+          </p>
+        )}
       </div>
 
       {questions.length === 0 ? (
@@ -189,8 +246,22 @@ export function TestTakePage() {
         <div className="space-y-5">
           {questions.map((question, index) => {
             const selectedOptionId = answers[question.id];
+            const isFocused = index === activeQuestionIdx;
             return (
-              <Card key={question.id} padding="lg" className="space-y-4">
+              <div
+                key={question.id}
+                ref={(el) => {
+                  questionRefs.current[index] = el;
+                }}
+                onClick={() => setActiveQuestionIdx(index)}
+              >
+              <Card
+                padding="lg"
+                className={[
+                  'space-y-4 transition-colors',
+                  isFocused ? 'border-phosters-400 dark:border-phosters-600' : '',
+                ].join(' ')}
+              >
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-xs font-semibold text-phosters-700 dark:text-phosters-400 tabular-nums">
                     Question {index + 1} of {questions.length}
@@ -213,7 +284,10 @@ export function TestTakePage() {
                         type="button"
                         role="radio"
                         aria-checked={isSelected}
-                        onClick={() => selectOption(question.id, opt.id)}
+                        onClick={() => {
+                          setActiveQuestionIdx(index);
+                          selectOption(question.id, opt.id);
+                        }}
                         className={[
                           'w-full flex items-center justify-between gap-3 min-h-[52px] px-4 py-3 rounded-xl border text-left transition-colors cursor-pointer',
                           isSelected
@@ -247,6 +321,7 @@ export function TestTakePage() {
                   })}
                 </div>
               </Card>
+              </div>
             );
           })}
 
@@ -280,6 +355,11 @@ export function TestTakePage() {
           </div>
         </div>
       )}
+
+      <JambCalculator
+        open={calculatorOpen}
+        onClose={() => setCalculatorOpen(false)}
+      />
     </div>
   );
 }

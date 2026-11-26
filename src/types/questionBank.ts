@@ -10,46 +10,6 @@ export type DocumentSourceFormat =
   | 'rtf'
   | 'paste';
 
-export interface ConvertDocumentRequest {
-  fileName: string;
-  mimeType?: string;
-  fileBase64: string;
-}
-
-export interface ConvertDocumentResponse {
-  ok: true;
-  fileName: string;
-  sourceFormat: DocumentSourceFormat;
-  pageCount: number;
-  charCount: number;
-  convertedText: string;
-  isScannedLikely: boolean;
-  chunks: string[];
-  estimatedQuestions: number;
-}
-
-export interface OcrPdfRequest {
-  fileName: string;
-  fileBase64: string;
-}
-
-export interface OcrPdfResponse {
-  ok: true;
-  fileName: string;
-  convertedText: string;
-  charCount: number;
-  chunks: string[];
-  estimatedQuestions: number;
-}
-
-export interface ParseChunkRequest {
-  chunkText: string;
-  examHint?: string;
-  subjectHint?: string;
-  defaultYear?: number | null;
-  generateMissingExplanations?: boolean;
-}
-
 export interface ParsedBankOptionDraft {
   localKey: string;
   optionKey: string;
@@ -69,18 +29,6 @@ export interface ParsedBankQuestionDraft {
   hasKeyIssue: boolean;
   include: boolean;
   options: ParsedBankOptionDraft[];
-}
-
-export type ParsedChunkOptionItem = Omit<ParsedBankOptionDraft, 'localKey'>;
-
-export interface ParsedChunkQuestionItem
-  extends Omit<ParsedBankQuestionDraft, 'localKey' | 'include' | 'options'> {
-  options: ParsedChunkOptionItem[];
-}
-
-export interface ParseChunkResponse {
-  ok: true;
-  questions: ParsedChunkQuestionItem[];
 }
 
 export interface QuestionBankOptionRecord {
@@ -112,27 +60,3 @@ export interface QuestionBankItem {
   updated_at: string;
   options: QuestionBankOptionRecord[];
 }
-
-export interface DriveFolderEntry {
-  id: string;
-  title: string;
-  isFolder: boolean;
-}
-
-export interface DriveListRequest {
-  urlOrId: string;
-}
-
-export interface DriveListResponse {
-  ok: true;
-  sourceType: 'folder' | 'file';
-  driveId: string;
-  folderTitle: string;
-  entries: DriveFolderEntry[];
-}
-
-export interface DriveImportRequest {
-  fileId: string;
-  fileName?: string;
-}
-

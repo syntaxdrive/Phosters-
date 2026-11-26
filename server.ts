@@ -13,25 +13,7 @@ import {
   verifyAdminAuthorization,
   verifyCronOrAdminAuthorization,
 } from './server/pushEngine.ts';
-import {
-  convertUploadedDocument,
-  importPublicDriveFile,
-  listPublicDriveFolder,
-  ocrScannedPdfWithGemini,
-  parseQuestionChunkWithGemini,
-  verifySuperAdminAuthorization,
-} from './server/questionBankEngine.ts';
-import { generateTutorQuestionsWithGemini } from './server/aiTestEngine.ts';
-import { isSuperAdminEmail } from './src/lib/superAdmin.ts';
-import type { AiGenerateQuestionsRequest } from './src/types/cbt.ts';
 import type { RemindInactiveInput, SendPushPayload } from './src/types/push.ts';
-import type {
-  ConvertDocumentRequest,
-  DriveImportRequest,
-  DriveListRequest,
-  OcrPdfRequest,
-  ParseChunkRequest,
-} from './src/types/questionBank.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,8 +21,11 @@ const __dirname = path.dirname(__filename);
 async function createServer() {
   const app = express();
   const httpServer = http.createServer(app);
-  app.use('/api/question-bank', express.json({ limit: '24mb' }));
   app.use(express.json({ limit: '1mb' }));
+
+  app.get('/api/health', (_req, res) => {
+    res.status(200).json({ ok: true, service: 'phosters' });
+  });
 
   app.get('/api/push/config', (_req, res) => {
     res.status(200).json(getPublicPushConfig());
@@ -135,208 +120,6 @@ async function createServer() {
       console.error('Express /api/push/remind-inactive error:', err);
       res.status(500).json({
         error: err instanceof Error ? err.message : 'Unexpected push reminder error.',
-      });
-    }
-  });
-
-  app.post('/api/question-bank/convert', async (req, res) => {
-    try {
-      const authCheck = await verifySuperAdminAuthorization(req.headers.authorization);
-      if (!authCheck.ok) {
-        res.status(authCheck.status).json({ error: authCheck.error });
-        return;
-      }
-
-      const body = req.body as ConvertDocumentRequest | undefined;
-      if (!body || typeof body !== 'object' || typeof body.fileBase64 !== 'string') {
-        res.status(400).json({ error: 'Invalid document conversion payload.' });
-        return;
-      }
-
-      const result = await convertUploadedDocument(body);
-      res.status(result.status).json(result.body);
-    } catch (err) {
-      console.error('Express /api/question-bank/convert error:', err);
-      res.status(500).json({
-        error:
-          err instanceof Error
-            ? `Document conversion error: ${err.message}`
-            : 'Unexpected document conversion error.',
-      });
-    }
-  });
-
-  app.post('/api/question-bank/ocr-pdf', async (req, res) => {
-    try {
-      const authCheck = await verifySuperAdminAuthorization(req.headers.authorization);
-      if (!authCheck.ok) {
-        res.status(authCheck.status).json({ error: authCheck.error });
-        return;
-      }
-
-      const body = req.body as OcrPdfRequest | undefined;
-      if (!body || typeof body !== 'object' || typeof body.fileBase64 !== 'string') {
-        res.status(400).json({ error: 'Invalid PDF OCR payload.' });
-        return;
-      }
-
-      const result = await ocrScannedPdfWithGemini(body);
-      res.status(result.status).json(result.body);
-    } catch (err) {
-      console.error('Express /api/question-bank/ocr-pdf error:', err);
-      res.status(500).json({
-        error:
-          err instanceof Error
-            ? `PDF OCR error: ${err.message}`
-            : 'Unexpected PDF OCR error.',
-      });
-    }
-  });
-
-  app.post('/api/question-bank/parse-chunk', async (req, res) => {
-    try {
-      const authCheck = await verifySuperAdminAuthorization(req.headers.authorization);
-      if (!authCheck.ok) {
-        res.status(authCheck.status).json({ error: authCheck.error });
-        return;
-      }
-
-      const body = req.body as ParseChunkRequest | undefined;
-      if (!body || typeof body !== 'object' || typeof body.chunkText !== 'string') {
-        res.status(400).json({ error: 'Invalid question chunk parsing payload.' });
-        return;
-      }
-
-      const result = await parseQuestionChunkWithGemini(body);
-      res.status(result.status).json(result.body);
-    } catch (err) {
-      console.error('Express /api/question-bank/parse-chunk error:', err);
-      res.status(500).json({
-        error:
-          err instanceof Error
-            ? `Question parsing error: ${err.message}`
-            : 'Unexpected question parsing error.',
-      });
-    }
-  });
-
-  app.post('/api/question-bank/drive-list', async (req, res) => {
-    try {
-      const authCheck = await verifySuperAdminAuthorization(req.headers.authorization);
-      if (!authCheck.ok) {
-        res.status(authCheck.status).json({ error: authCheck.error });
-        return;
-      }
-
-      const body = req.body as DriveListRequest | undefined;
-      if (!body || typeof body !== 'object' || typeof body.urlOrId !== 'string') {
-        res.status(400).json({ error: 'Invalid Google Drive link payload.' });
-        return;
-      }
-
-      const result = await listPublicDriveFolder(body);
-      res.status(result.status).json(result.body);
-    } catch (err) {
-      console.error('Express /api/question-bank/drive-list error:', err);
-      res.status(500).json({
-        error:
-          err instanceof Error
-            ? `Google Drive folder error: ${err.message}`
-            : 'Unexpected Google Drive folder error.',
-      });
-    }
-  });
-
-  app.post('/api/question-bank/drive-import', async (req, res) => {
-    try {
-      const authCheck = await verifySuperAdminAuthorization(req.headers.authorization);
-      if (!authCheck.ok) {
-        res.status(authCheck.status).json({ error: authCheck.error });
-        return;
-      }
-
-      const body = req.body as DriveImportRequest | undefined;
-      if (!body || typeof body !== 'object' || typeof body.fileId !== 'string') {
-        res.status(400).json({ error: 'Invalid Google Drive file payload.' });
-        return;
-      }
-
-      const result = await importPublicDriveFile(body);
-      res.status(result.status).json(result.body);
-    } catch (err) {
-      console.error('Express /api/question-bank/drive-import error:', err);
-      res.status(500).json({
-        error:
-          err instanceof Error
-            ? `Google Drive import error: ${err.message}`
-            : 'Unexpected Google Drive import error.',
-      });
-    }
-  });
-
-  app.post('/api/cbt/ai-generate-questions', async (req, res) => {
-    try {
-      const authCheck = await verifyAdminAuthorization(req.headers.authorization);
-      if (!authCheck.ok) {
-        res.status(authCheck.status).json({ error: authCheck.error });
-        return;
-      }
-
-      const body = req.body as AiGenerateQuestionsRequest | undefined;
-      if (!body || typeof body !== 'object' || typeof body.subjectName !== 'string') {
-        res.status(400).json({ error: 'Invalid AI question generation payload.' });
-        return;
-      }
-
-      let resolvedSubjectName = body.subjectName;
-      const requestedSubjectId =
-        typeof body.subjectId === 'string' ? body.subjectId.trim() : '';
-
-      if (requestedSubjectId && authCheck.client && authCheck.userId) {
-        if (!isSuperAdminEmail(authCheck.userEmail)) {
-          const assignRes = await authCheck.client
-            .from('tutor_subject_assignments')
-            .select('subject_id')
-            .eq('tutor_id', authCheck.userId);
-
-          if (!assignRes.error) {
-            const assignedIds = new Set(
-              ((assignRes.data ?? []) as Array<{ subject_id: string }>).map(
-                (r) => r.subject_id
-              )
-            );
-            if (!assignedIds.has(requestedSubjectId)) {
-              res.status(403).json({
-                error:
-                  'This subject is not assigned to your Tutor account. Ask Super Admin to assign it.',
-              });
-              return;
-            }
-          }
-        }
-
-        const subjRes = await authCheck.client
-          .from('subjects')
-          .select('name')
-          .eq('id', requestedSubjectId)
-          .maybeSingle();
-        if (!subjRes.error && subjRes.data?.name) {
-          resolvedSubjectName = subjRes.data.name;
-        }
-      }
-
-      const result = await generateTutorQuestionsWithGemini({
-        ...body,
-        subjectName: resolvedSubjectName,
-      });
-      res.status(result.status).json(result.body);
-    } catch (err) {
-      console.error('Express /api/cbt/ai-generate-questions error:', err);
-      res.status(500).json({
-        error:
-          err instanceof Error
-            ? `AI question generator error: ${err.message}`
-            : 'Unexpected AI question generation error.',
       });
     }
   });

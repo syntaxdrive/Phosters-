@@ -15,9 +15,11 @@ import {
   Sun,
   Trash2,
   User,
+  Wifi,
 } from 'lucide-react';
 import { LEGAL_CONTACT_EMAIL, LEGAL_DOCUMENTS } from '../data/legalPolicies';
 import { useAuth } from '../hooks/useAuth';
+import { useDataSaver } from '../hooks/useDataSaver';
 import { useOfflineSync } from '../hooks/useOfflineSync';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
@@ -62,6 +64,7 @@ export function SettingsPage() {
     syncNow,
   } = useOfflineSync();
   const { theme, resolvedTheme, setTheme } = useTheme();
+  const { dataLite, setDataLite } = useDataSaver();
   const { isInstalled } = usePWAInstall();
   const navigate = useNavigate();
   const [signingOut, setSigningOut] = useState(false);
@@ -154,6 +157,40 @@ export function SettingsPage() {
               </button>
             );
           })}
+        </div>
+      </Card>
+
+      {/* Data-Lite Mode for tight mobile data plans */}
+      <Card padding="lg" className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-lg bg-phosters-50 dark:bg-phosters-900/50 border border-phosters-200 dark:border-phosters-800 flex items-center justify-center text-phosters-700 dark:text-phosters-400 shrink-0 mt-0.5">
+              <Wifi className="h-4 w-4" aria-hidden="true" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                Data-Lite Mode
+              </h2>
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                Pause automatic YouTube video loading on lessons so you only stream video when you explicitly tap to play, letting you study lesson notes and CBT tests on tiny data bundles.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={dataLite}
+            onClick={() => setDataLite(!dataLite)}
+            className={[
+              'inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 self-start sm:self-center border',
+              dataLite
+                ? 'bg-phosters-600 text-white border-phosters-600 hover:bg-phosters-700'
+                : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800',
+            ].join(' ')}
+          >
+            {dataLite ? 'Data-Lite: ON' : 'Enable Data-Lite'}
+          </button>
         </div>
       </Card>
 

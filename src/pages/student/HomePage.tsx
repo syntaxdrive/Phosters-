@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, BookOpen, ChevronRight, Clock, HardDrive, PlayCircle, Settings2, Shield } from 'lucide-react';
+import { ArrowRight, BookOpen, Calculator, ChevronRight, Clock, HardDrive, PlayCircle, Settings2, Shield, Target, Wifi } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useDataSaver } from '../../hooks/useDataSaver';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { fetchStudentAnnouncements } from '../../services/announcementService';
 import { fetchStudentAttempts } from '../../services/cbtService';
@@ -21,6 +22,7 @@ import { ErrorState, LoadingState } from '../../components/ui/States';
 
 export function HomePage() {
   const { user, profile } = useAuth();
+  const { dataLite, toggleDataLite } = useDataSaver();
   const { summary, pendingCount, totalBytes } = useOfflineSync();
   const displayName = profile?.full_name || 'Student';
 
@@ -155,35 +157,96 @@ export function HomePage() {
             </p>
           </div>
         </div>
-        <Link
-          to="/app/offline"
-          className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
-        >
-          Open Offline Study
-        </Link>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={dataLite}
+            onClick={toggleDataLite}
+            className={[
+              'inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-lg border text-xs sm:text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0',
+              dataLite
+                ? 'bg-phosters-600 text-white border-phosters-600 hover:bg-phosters-700'
+                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700',
+            ].join(' ')}
+          >
+            <Wifi className="h-4 w-4" aria-hidden="true" />
+            <span>{dataLite ? 'Data-Lite: ON' : 'Data-Lite'}</span>
+          </button>
+          <Link
+            to="/app/offline"
+            className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
+          >
+            Open Offline Study
+          </Link>
+        </div>
       </Card>
 
-      <Card padding="md" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <div className="h-9 w-9 rounded-lg bg-phosters-50 dark:bg-phosters-900/50 border border-phosters-200 dark:border-phosters-800 flex items-center justify-center text-phosters-700 dark:text-phosters-400 shrink-0">
-            <Clock className="h-4 w-4" aria-hidden="true" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card padding="md" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-lg bg-phosters-50 dark:bg-phosters-900/50 border border-phosters-200 dark:border-phosters-800 flex items-center justify-center text-phosters-700 dark:text-phosters-400 shrink-0">
+              <Clock className="h-4 w-4" aria-hidden="true" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                4-Subject Timed CBT Mock Exams
+              </h2>
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                120-minute CBT sitting with basic calculator, keyboard shortcuts, and /400 scoring.
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-              4-Subject Timed CBT Mock Exams
-            </h2>
-            <p className="text-xs text-slate-600 dark:text-slate-400">
-              Practice all 4 JAMB subjects (English + 3 electives) in one timed 120-minute CBT sitting with /400 scoring.
-            </p>
-          </div>
+          <Link
+            to="/app/mocks"
+            className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg bg-phosters-600 text-white text-sm font-semibold hover:bg-phosters-700 transition-colors whitespace-nowrap shrink-0"
+          >
+            Open Mock Center
+          </Link>
+        </Card>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Link
+            to="/app/missed-questions"
+            className="group flex flex-col justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-phosters-600 dark:hover:border-phosters-500 transition-colors"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="h-8 w-8 rounded-lg bg-phosters-50 dark:bg-phosters-900/50 border border-phosters-200 dark:border-phosters-800 flex items-center justify-center text-phosters-700 dark:text-phosters-400 shrink-0">
+                <Target className="h-4 w-4" aria-hidden="true" />
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-phosters-700 dark:group-hover:text-phosters-400" aria-hidden="true" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                Practice Missed Questions
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+                Retest only questions you failed until mastered.
+              </p>
+            </div>
+          </Link>
+
+          <Link
+            to="/app/admission-guide"
+            className="group flex flex-col justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-phosters-600 dark:hover:border-phosters-500 transition-colors"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="h-8 w-8 rounded-lg bg-phosters-50 dark:bg-phosters-900/50 border border-phosters-200 dark:border-phosters-800 flex items-center justify-center text-phosters-700 dark:text-phosters-400 shrink-0">
+                <Calculator className="h-4 w-4" aria-hidden="true" />
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-phosters-700 dark:group-hover:text-phosters-400" aria-hidden="true" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                UI Aggregate &amp; Combos
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+                Score calculator &amp; verified JAMB subject combos.
+              </p>
+            </div>
+          </Link>
         </div>
-        <Link
-          to="/app/mocks"
-          className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg bg-phosters-600 text-white text-sm font-semibold hover:bg-phosters-700 transition-colors whitespace-nowrap shrink-0"
-        >
-          Open Mock Center
-        </Link>
-      </Card>
+      </div>
 
       {announcements.length > 0 && <AnnouncementFeed items={announcements} />}
 

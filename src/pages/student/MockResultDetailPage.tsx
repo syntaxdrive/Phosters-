@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, Clock, Share2, XCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Clock, Share2, Target, XCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import {
+  computeUiAggregate,
+  getUiPostUtmeScore100,
+  isUiPostUtmeExam,
+} from '../../data/admissionGuide';
 import { fetchMockAttemptReview } from '../../services/mockExamService';
 import type { MockAttemptReviewPayload } from '../../types/cbt';
 import type { SharePayload } from '../../types/engagement';
@@ -25,6 +30,7 @@ export function MockResultDetailPage() {
   const [review, setReview] = useState<MockAttemptReviewPayload | null>(null);
   const [activeSubjectId, setActiveSubjectId] = useState<string>('all');
   const [incorrectOnly, setIncorrectOnly] = useState(false);
+  const [jambPreviewScore, setJambPreviewScore] = useState<number>(260);
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +89,11 @@ export function MockResultDetailPage() {
   }
 
   const { attempt } = review;
+  const isUiPostUtme = isUiPostUtmeExam(attempt.exam_slug, attempt.exam_name, attempt.title);
+  const uiScore100 = getUiPostUtmeScore100(attempt.percentage);
+  const uiAgg = computeUiAggregate(jambPreviewScore, uiScore100);
+  const meetsUiBar = uiScore100 >= 50;
+
   const submittedLabel = new Date(attempt.submitted_at).toLocaleString('en-NG', {
     year: 'numeric',
     month: 'short',
@@ -102,23 +113,38 @@ export function MockResultDetailPage() {
           <span>Back to Mock Center</span>
         </Link>
 
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() =>
-            setSharePayload(
-              buildTestResultSharePayload({
-                testTitle: `${attempt.title} (${attempt.total_score_400}/400)`,
-                percentage: attempt.percentage,
-                score: attempt.total_score_400,
-                totalPoints: 400,
-              })
-            )
-          }
-        >
-          <Share2 className="h-4 w-4" aria-hidden="true" />
-          <span>Share Score</span>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {attempt.total_correct < attempt.total_questions && (
+            <Link
+              to="/app/missed-questions"
+              className="inline-flex items-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-lg bg-phosters-600 text-white text-sm font-semibold hover:bg-phosters-700 transition-colors whitespace-nowrap shrink-0"
+            >
+              <Target className="h-4 w-4" aria-hidden="true" />
+              <span>Practice Missed</span>
+            </Link>
+          )}
+
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() =>
+              setSharePayload(
+                buildTestResultSharePayload({
+                  testTitle: isUiPostUtme
+                    ? `${attempt.title} (${uiScore100}/100)`
+                    : `${attempt.title} (${attempt.total_score_400}/400)`,
+                  percentage: attempt.percentage,
+                  score: isUiPostUtme ? uiScore100 : attempt.total_score_400,
+                  totalPoints: isUiPostUtme ? 100 : 400,
+                  examName: attempt.exam_name,
+                })
+              )
+            }
+          >
+            <Share2 className="h-4 w-4" aria-hidden="true" />
+            <span>Share Score</span>
+          </Button>
+        </div>
       </div>
 
       {/* Aggregate Score Hero Card */}
@@ -131,7 +157,7 @@ export function MockResultDetailPage() {
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
               {attempt.title}
             </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums inline-flex items-center gap-3">
+            <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums inline-flex flex-wrap items-center gap-2">
               <span>
                 {attempt.total_correct} of {attempt.total_questions} questions correct (
                 {Math.round(attempt.percentage)}%)
@@ -146,44 +172,104 @@ export function MockResultDetailPage() {
 
           <div className="rounded-xl border border-phosters-200 dark:border-phosters-800 bg-phosters-50/70 dark:bg-phosters-950/40 px-5 py-3 text-center shrink-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-phosters-700 dark:text-phosters-400">
-              JAMB Aggregate
+              {isUiPostUtme ? 'UI Post-UTME Score' : 'JAMB Aggregate'}
             </p>
             <p className="text-3xl font-bold text-slate-900 dark:text-slate-100 tabular-nums">
-              {attempt.total_score_400}{' '}
+              {isUiPostUtme ? uiScore100 : attempt.total_score_400}{' '}
               <span className="text-base font-semibold text-slate-500 dark:text-slate-400">
-                / 400
+                {isUiPostUtme ? '/ 100' : '/ 400'}
               </span>
             </p>
+            {isUiPostUtme && (
+              <p
+                className={[
+                  'mt-1 text-[11px] font-semibold',
+                  meetsUiBar
+                    ? 'text-emerald-700 dark:text-emerald-400'
+                    : 'text-amber-700 dark:text-amber-400',
+                ].join(' ')}
+              >
+                {meetsUiBar ? 'Meets 50/100 screening bar' : 'Below 50/100 screening bar'}
+              </p>
+            )}
           </div>
         </div>
 
         {/* 4-Subject Score Breakdown Grid */}
         {attempt.subject_scores.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-            {attempt.subject_scores.map((sub) => (
-              <div
-                key={sub.subject_id}
-                className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 space-y-2"
-              >
-                <div className="flex items-baseline justify-between gap-2">
-                  <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
-                    {sub.subject_name}
+            {attempt.subject_scores.map((sub) => {
+              const subjPct = Math.min(100, Math.max(0, Math.round(sub.percentage)));
+              return (
+                <div
+                  key={sub.subject_id}
+                  className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 space-y-2"
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                      {sub.subject_name}
+                    </p>
+                    <span className="text-sm font-bold text-phosters-700 dark:text-phosters-400 tabular-nums shrink-0">
+                      {isUiPostUtme ? `${subjPct}%` : `${sub.jamb_score_100}/100`}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-phosters-600"
+                      style={{
+                        width: `${isUiPostUtme ? subjPct : Math.min(100, Math.max(0, sub.jamb_score_100))}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                    {sub.correct} / {sub.total} correct ({subjPct}%)
                   </p>
-                  <span className="text-sm font-bold text-phosters-700 dark:text-phosters-400 tabular-nums shrink-0">
-                    {sub.jamb_score_100}/100
-                  </span>
                 </div>
-                <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-phosters-600"
-                    style={{ width: `${Math.min(100, Math.max(0, sub.jamb_score_100))}%` }}
-                  />
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-                  {sub.correct} / {sub.total} correct ({Math.round(sub.percentage)}%)
-                </p>
-              </div>
-            ))}
+              );
+            })}
+          </div>
+        )}
+
+        {/* Inline Combined UI Aggregate Preview for UI Post-UTME */}
+        {isUiPostUtme && (
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                Combined UI Admission Aggregate Preview
+              </p>
+              <p className="text-xs text-slate-600 dark:text-slate-400 tabular-nums">
+                Formula: (JAMB ÷ 8) + ({uiScore100} ÷ 2) ={' '}
+                <strong className="font-semibold text-slate-900 dark:text-slate-100">
+                  {uiAgg.totalAggregate.toFixed(2)}%
+                </strong>{' '}
+                ({uiAgg.jambPart.toFixed(1)} + {uiAgg.postUtmePart.toFixed(1)})
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <span>JAMB (/400):</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={400}
+                  value={jambPreviewScore}
+                  onChange={(e) =>
+                    setJambPreviewScore(
+                      Math.min(400, Math.max(0, Number(e.target.value) || 0))
+                    )
+                  }
+                  className="w-20 min-h-[40px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 text-sm font-bold text-slate-900 dark:text-slate-100 tabular-nums"
+                />
+              </label>
+
+              <Link
+                to="/app/admission-guide"
+                className="inline-flex items-center justify-center min-h-[40px] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-phosters-700 dark:text-phosters-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+              >
+                Full Aggregate Guide
+              </Link>
+            </div>
           </div>
         )}
       </Card>

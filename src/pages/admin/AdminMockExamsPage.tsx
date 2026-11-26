@@ -5,7 +5,6 @@ import {
   Edit3,
   Plus,
   Send,
-  Sparkles,
   Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
@@ -19,7 +18,6 @@ import {
   deleteAdminMockExam,
   fetchAdminMockExamsData,
   fetchMockCustomQuestionsForAdmin,
-  generateAiQuestionsForTutor,
   saveAdminMockExam,
   saveTutorMockSubjectQuestions,
   updateMockReleaseStatus,
@@ -85,13 +83,7 @@ export function AdminMockExamsPage() {
   // while `otherSubjectCounts` shows read-only counts from other tutors/Super Admin.
   const [customQuestions, setCustomQuestions] = useState<AdminMockCustomQuestionInput[]>([]);
   const [otherSubjectCounts, setOtherSubjectCounts] = useState<Array<{ subjectName: string; count: number }>>([]);
-
-  // AI Setter inside Mock Builder
-  const [aiSubjectId, setAiSubjectId] = useState('');
-  const [aiCount, setAiCount] = useState(10);
-  const [aiDifficulty, setAiDifficulty] = useState<'mixed' | 'easy' | 'medium' | 'hard'>('mixed');
-  const [aiInstructions, setAiInstructions] = useState('');
-  const [aiGenerating, setAiGenerating] = useState(false);
+  const [defaultQuestionSubjectId, setDefaultQuestionSubjectId] = useState('');
 
   const [statusFilter, setStatusFilter] = useState<'all' | ReleaseStatus>('all');
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
@@ -154,7 +146,7 @@ export function AdminMockExamsPage() {
       setExamId(jamb.id);
     }
 
-    setAiSubjectId((prev) => {
+    setDefaultQuestionSubjectId((prev) => {
       if (prev && allowedSubjs.some((s) => s.id === prev)) return prev;
       return allowedSubjs[0]?.id ?? '';
     });
@@ -175,7 +167,7 @@ export function AdminMockExamsPage() {
     if (resolvedExam) setExamId(resolvedExam.id);
     setTitle('');
     setDescription('');
-    setDurationMinutes(isUi ? 60 : 120);
+    setDurationMinutes(isUi ? 90 : 120);
     setEnglishCount(isUi ? 25 : 60);
     setOtherCount(isUi ? 25 : 40);
     setUsesBank(true);
@@ -193,7 +185,7 @@ export function AdminMockExamsPage() {
     if (!editingId) {
       const ex = exams.find((e) => e.id === nextExamId);
       if (ex?.slug === 'ui-post-utme') {
-        setDurationMinutes(60);
+        setDurationMinutes(90);
         setEnglishCount(25);
         setOtherCount(25);
       } else {
@@ -252,57 +244,11 @@ export function AdminMockExamsPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  async function handleGenerateAiForMock() {
-    const subj = editableSubjects.find((s) => s.id === aiSubjectId);
-    const exam = exams.find((e) => e.id === examId);
-    if (!subj) {
-      setNotice({ tone: 'error', message: 'Select an assigned subject for AI question generation.' });
-      return;
-    }
-
-    setNotice(null);
-    setAiGenerating(true);
-    const res = await generateAiQuestionsForTutor({
-      examName: exam?.name || 'JAMB UTME',
-      subjectId: subj.id,
-      subjectName: subj.name,
-      difficulty: aiDifficulty,
-      count: aiCount,
-      purpose: 'mock_exam',
-      instructions: aiInstructions,
-    });
-    setAiGenerating(false);
-
-    if (res.error || !res.result) {
-      setNotice({ tone: 'error', message: res.error || 'Could not generate AI questions.' });
-      return;
-    }
-
-    const incoming: AdminMockCustomQuestionInput[] = res.result.questions.map((q) => ({
-      subject_id: subj.id,
-      question_text: q.questionText,
-      explanation: q.explanation,
-      difficulty: q.difficulty,
-      points: q.points || 1,
-      options: q.options.map((o, idx) => ({
-        localKey: newKey(),
-        option_key: o.optionKey || OPTION_KEYS[idx] || String(idx + 1),
-        option_text: o.optionText,
-        is_correct: o.isCorrect,
-      })),
-    }));
-
-    setCustomQuestions((prev) => [...prev, ...incoming]);
-    setNotice({
-      tone: 'success',
-      message: `AI prepared ${incoming.length} ${subj.name} questions. Review below and save your changes.`,
-    });
-  }
-
   function addManualCustomQuestion() {
     const targetSubj =
-      (editableSubjects.some((s) => s.id === aiSubjectId) ? aiSubjectId : '') ||
-      editableSubjects[0]?.id;
+      (editableSubjects.some((s) => s.id === defaultQuestionSubjectId)
+        ? defaultQuestionSubjectId
+        : '') || editableSubjects[0]?.id;
     if (!targetSubj) return;
 
     setCustomQuestions((prev) => [
@@ -477,14 +423,14 @@ export function AdminMockExamsPage() {
     <div className="max-w-5xl space-y-6">
       <div className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-          4-Subject Mock Exam Builder &amp; AI Setter
+          4-Subject Mock Exam Builder
         </h1>
         <p className="text-sm text-slate-600 dark:text-slate-400">
           {isSuperAdmin
-            ? 'Publish timed JAMB UTME (60 English + 40 × 3 Electives · 120 mins) and UI Post-UTME mock examinations, backed by your Question Bank plus manual and AI tutor questions.'
+            ? 'Publish timed JAMB UTME (60 English + 40 × 3 Electives · 120 mins) and UI Post-UTME (25 × 4 Subjects · 90 mins) mock examinations, backed by your Question Bank and manual tutor questions.'
             : editableSubjects.length > 0
-              ? `Manually add or AI-generate mock exam questions for your assigned subject${editableSubjects.length > 1 ? 's' : ''}: ${editableSubjects.map((s) => s.name).join(' · ')}.`
-              : 'Add manual or AI-generated mock exam questions for your assigned subjects.'}
+              ? `Manually add mock exam questions for your assigned subject${editableSubjects.length > 1 ? 's' : ''}: ${editableSubjects.map((s) => s.name).join(' · ')}.`
+              : 'Add manual mock exam questions for your assigned subjects.'}
         </p>
       </div>
 
@@ -551,7 +497,7 @@ export function AdminMockExamsPage() {
       {/* Tutor Prompt when no template is selected yet */}
       {!isSuperAdmin && !editingId && !noSubjectsAssigned && mockExams.length > 0 && (
         <Alert tone="info" title="Select a Mock Exam below">
-          Click <strong>Set Questions</strong> on any Mock Exam template in the list below to manually set or AI-generate questions for{' '}
+          Click <strong>Set Questions</strong> on any Mock Exam template in the list below to manually add or edit questions for{' '}
           <strong>{editableSubjects.map((s) => s.name).join(', ')}</strong>. Other tutors&apos; subjects on the same mock exam stay untouched.
         </Alert>
       )}
@@ -726,105 +672,46 @@ export function AdminMockExamsPage() {
             </Card>
           ) : null}
 
-          {/* Tutor AI & Custom Mock Questions Section */}
+          {/* Manual Custom Mock Questions Section */}
           <Card padding="lg" className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="space-y-0.5">
                 <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
                   {isSuperAdmin
-                    ? `Custom & AI-Set Mock Questions (${customQuestions.length})`
+                    ? `Custom Mock Questions (${customQuestions.length})`
                     : `Your Assigned Subject Questions (${customQuestions.length})`}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   Optional fixed questions per subject. When a student sits this mock, their 4 selected subjects pull custom questions first and top up from the Question Bank.
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={editableSubjects.length === 0}
-                onClick={addManualCustomQuestion}
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                <span>Add Manual Question</span>
-              </Button>
-            </div>
-
-            {editableSubjects.length > 0 && (
-              <div className="rounded-xl border border-phosters-200 dark:border-phosters-800/80 bg-phosters-50/40 dark:bg-phosters-950/30 p-4 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                      Target Subject for AI
-                    </label>
-                    <select
-                      value={aiSubjectId}
-                      onChange={(e) => setAiSubjectId(e.target.value)}
-                      className="w-full min-h-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
-                    >
-                      {editableSubjects.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                      Difficulty
-                    </label>
-                    <select
-                      value={aiDifficulty}
-                      onChange={(e) =>
-                        setAiDifficulty(e.target.value as 'mixed' | 'easy' | 'medium' | 'hard')
-                      }
-                      className="w-full min-h-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
-                    >
-                      <option value="mixed">Balanced Exam Mix</option>
-                      <option value="easy">Easy</option>
-                      <option value="medium">Medium</option>
-                      <option value="hard">Hard</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                      Count (1–40)
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={40}
-                      value={aiCount}
-                      onChange={(e) =>
-                        setAiCount(Math.max(1, Math.min(40, Number(e.target.value) || 10)))
-                      }
-                      className="w-full min-h-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100 tabular-nums"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <input
-                    type="text"
-                    value={aiInstructions}
-                    onChange={(e) => setAiInstructions(e.target.value)}
-                    placeholder="Optional topic focus (e.g. Organic chemistry reactions & IUPAC naming)"
-                    className="flex-1 min-h-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
-                  />
-                  <Button
-                    type="button"
-                    variant="primary"
-                    loading={aiGenerating}
-                    onClick={() => void handleGenerateAiForMock()}
+              <div className="flex flex-wrap items-center gap-2">
+                {editableSubjects.length > 1 && (
+                  <select
+                    aria-label="Default subject for new question"
+                    value={defaultQuestionSubjectId}
+                    onChange={(e) => setDefaultQuestionSubjectId(e.target.value)}
+                    className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
                   >
-                    <Sparkles className="h-4 w-4" aria-hidden="true" />
-                    <span>AI Set {aiCount} Questions</span>
-                  </Button>
-                </div>
+                    {editableSubjects.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={editableSubjects.length === 0}
+                  onClick={addManualCustomQuestion}
+                  className="whitespace-nowrap shrink-0"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  <span>Add Manual Question</span>
+                </Button>
               </div>
-            )}
+            </div>
 
             {customQuestions.length > 0 && (
               <div className="space-y-3 max-h-[540px] overflow-y-auto pr-1">

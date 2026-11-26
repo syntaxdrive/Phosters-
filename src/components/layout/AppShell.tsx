@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Award,
   BookOpen,
+  Calculator,
   Clock,
   FileText,
   HardDrive,
@@ -16,12 +17,15 @@ import {
   Shield,
   SlidersHorizontal,
   Sun,
+  Target,
   User,
   UserPlus,
+  Wifi,
   X,
 } from 'lucide-react';
 import { LEGAL_CONTACT_EMAIL, LEGAL_DOCUMENTS } from '../../data/legalPolicies';
 import { useAuth } from '../../hooks/useAuth';
+import { useDataSaver } from '../../hooks/useDataSaver';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { useTheme, type ThemeMode } from '../../hooks/useTheme';
@@ -49,6 +53,7 @@ const themeChoices: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
 
 export function AppShell({ children }: AppShellProps) {
   const { user, profile, signOut, isConfigured } = useAuth();
+  const { dataLite, toggleDataLite } = useDataSaver();
   const { pendingCount } = useOfflineSync();
   const { isInstalled } = usePWAInstall();
   const { theme, setTheme } = useTheme();
@@ -328,6 +333,33 @@ export function AppShell({ children }: AppShellProps) {
                 </div>
               </div>
 
+              {/* Quick Data-Lite Toggle */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Mobile Data Saver
+                </p>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={dataLite}
+                  onClick={toggleDataLite}
+                  className={[
+                    'w-full flex items-center justify-between gap-3 px-3 min-h-[44px] rounded-xl border text-left transition-colors cursor-pointer',
+                    dataLite
+                      ? 'border-phosters-600 bg-phosters-50 dark:bg-phosters-900/40 text-phosters-800 dark:text-phosters-300'
+                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800',
+                  ].join(' ')}
+                >
+                  <span className="flex items-center gap-2.5 text-xs font-semibold">
+                    <Wifi className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>Data-Lite Mode</span>
+                  </span>
+                  <span className="text-xs font-bold tabular-nums">
+                    {dataLite ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+              </div>
+
               {/* Navigation Links */}
               <nav aria-label="Drawer navigation" className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 pb-1">
@@ -376,6 +408,34 @@ export function AppShell({ children }: AppShellProps) {
                           {pendingCount} queued
                         </span>
                       )}
+                    </NavLink>
+                    <NavLink
+                      to="/app/missed-questions"
+                      className={({ isActive }) =>
+                        [
+                          'flex items-center gap-3 px-3 min-h-[44px] rounded-lg text-sm font-medium transition-colors',
+                          isActive
+                            ? 'bg-phosters-50 dark:bg-phosters-900/50 text-phosters-800 dark:text-phosters-300 font-semibold'
+                            : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800',
+                        ].join(' ')
+                      }
+                    >
+                      <Target className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      <span>Missed Questions Drill</span>
+                    </NavLink>
+                    <NavLink
+                      to="/app/admission-guide"
+                      className={({ isActive }) =>
+                        [
+                          'flex items-center gap-3 px-3 min-h-[44px] rounded-lg text-sm font-medium transition-colors',
+                          isActive
+                            ? 'bg-phosters-50 dark:bg-phosters-900/50 text-phosters-800 dark:text-phosters-300 font-semibold'
+                            : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800',
+                        ].join(' ')
+                      }
+                    >
+                      <Calculator className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      <span>UI Aggregate &amp; Combos</span>
                     </NavLink>
                     <NavLink
                       to="/app/setup-exams"

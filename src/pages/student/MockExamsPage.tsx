@@ -17,6 +17,7 @@ import {
   startMockExamSession,
   type StudentMockHubData,
 } from '../../services/mockExamService';
+import { getUiPostUtmeScore100, isUiPostUtmeExam } from '../../data/admissionGuide';
 import type { MockExamMode } from '../../types/cbt';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
@@ -107,7 +108,7 @@ export function MockExamsPage() {
             4-Subject CBT Mock Center
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 max-w-2xl">
-            Sit full timed JAMB UTME (Use of English + your 3 electives · 400 marks) and UI Post-UTME mock exams built dynamically from your chosen subject combination.
+            Sit full timed JAMB UTME (120 mins · /400 scale) and UI Post-UTME (90 mins · /100 scale · no calculator) CBT mocks built dynamically from your 4 chosen subjects.
           </p>
         </div>
 
@@ -193,13 +194,15 @@ export function MockExamsPage() {
         <div className="space-y-6">
           {enrollments.map((enr) => {
             const isJamb = enr.exam.slug === 'jamb-utme';
+            const isUiPostUtme = enr.exam.slug === 'ui-post-utme';
+            const requiresFour = isJamb || isUiPostUtme;
             const readinessList = hub?.readinessByExamId.get(enr.exam.id) ?? [];
             const readinessMap = new Map(readinessList.map((r) => [r.subject_id, r]));
             const examPublishedMocks = (hub?.publishedMocks ?? []).filter(
               (m) => m.exam_id === enr.exam.id
             );
 
-            const hasValidSubjects = isJamb
+            const hasValidSubjects = requiresFour
               ? enr.selectedSubjects.length === 4
               : enr.selectedSubjects.length >= 1;
 
@@ -218,7 +221,9 @@ export function MockExamsPage() {
                     <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
                       {isJamb
                         ? 'Standard CBT: 60 Use of English + 40 × 3 Electives (180 Qs max · 120 mins · /400 scoring)'
-                        : 'Timed Multi-Subject Post-UTME Mock · 60 mins'}
+                        : isUiPostUtme
+                          ? 'Standard UI CBT: 25 Qs × 4 Subjects (100 Qs · 90 mins · /100 scoring · No Calculator)'
+                          : 'Timed Multi-Subject CBT Mock'}
                       {enr.intendedCourse ? ` · ${enr.intendedCourse}` : ''}
                     </p>
                   </div>
@@ -230,7 +235,7 @@ export function MockExamsPage() {
 
                 {!hasValidSubjects ? (
                   <Alert tone="warning" title="Complete your 4-subject combination">
-                    JAMB UTME mock exams require Use of English plus 3 elective subjects (currently{' '}
+                    {enr.exam.name} mock exams require Use of English plus 3 elective subjects (currently{' '}
                     {enr.selectedSubjects.length} selected).{' '}
                     <Link
                       to="/app/setup-exams"
@@ -295,7 +300,9 @@ export function MockExamsPage() {
                         <span>
                           {isJamb
                             ? 'Start Full 4-Subject Mock (120 mins)'
-                            : 'Start Timed CBT Mock (60 mins)'}
+                            : isUiPostUtme
+                              ? 'Start Full UI Post-UTME Mock (90 mins)'
+                              : 'Start Timed CBT Mock'}
                         </span>
                       </Button>
 
@@ -442,6 +449,8 @@ export function MockExamsPage() {
                       day: 'numeric',
                     })
                   : '';
+                const isUi = isUiPostUtmeExam(att.exam_slug, att.exam_name, att.title);
+                const uiScore = getUiPostUtmeScore100(att.percentage);
                 return (
                   <li key={att.id}>
                     <Link
@@ -462,10 +471,10 @@ export function MockExamsPage() {
                       </div>
                       <div className="flex items-baseline gap-1.5 shrink-0 pl-6 sm:pl-0">
                         <span className="text-lg font-bold text-phosters-700 dark:text-phosters-400 tabular-nums">
-                          {att.total_score_400}
+                          {isUi ? uiScore : att.total_score_400}
                         </span>
                         <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                          / 400
+                          {isUi ? '/ 100' : '/ 400'}
                         </span>
                       </div>
                     </Link>

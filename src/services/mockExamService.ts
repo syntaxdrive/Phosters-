@@ -18,8 +18,6 @@ import { supabase } from '../lib/supabase';
 import type {
   AdminMockCustomQuestionInput,
   AdminMockExamListItem,
-  AiGenerateQuestionsRequest,
-  AiGenerateQuestionsResponse,
   MockAttemptReviewPayload,
   MockAttemptSummary,
   MockExamMode,
@@ -56,65 +54,6 @@ function mapMockError(err: { message?: string; code?: string } | null): string {
     return 'Network unavailable. Connect to the internet or open a saved offline mock paper.';
   }
   return err.message || 'Unable to process mock exam request right now.';
-}
-
-async function getAccessToken(): Promise<string | null> {
-  if (!supabase) return null;
-  const { data } = await supabase.auth.getSession();
-  return data.session?.access_token ?? null;
-}
-
-// ============================================================================
-// Tutor / Admin AI Question Generator Client
-// ============================================================================
-
-export async function generateAiQuestionsForTutor(
-  req: AiGenerateQuestionsRequest
-): Promise<{ result: AiGenerateQuestionsResponse | null; error: string | null }> {
-  const token = await getAccessToken();
-  if (!token) {
-    return { result: null, error: 'You must be signed in as a tutor or administrator.' };
-  }
-
-  try {
-    const res = await fetch('/api/cbt/ai-generate-questions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(req),
-    });
-
-    const rawText = await res.text();
-    let parsed: (AiGenerateQuestionsResponse & { error?: string }) | { error?: string } | null = null;
-    if (rawText.trim()) {
-      try {
-        parsed = JSON.parse(rawText) as AiGenerateQuestionsResponse & { error?: string };
-      } catch {
-        parsed = null;
-      }
-    }
-
-    if (!res.ok || !parsed || !('ok' in parsed)) {
-      return {
-        result: null,
-        error:
-          (parsed && 'error' in parsed && parsed.error) ||
-          `AI question generator returned HTTP ${res.status}.`,
-      };
-    }
-
-    return { result: parsed, error: null };
-  } catch (err) {
-    return {
-      result: null,
-      error:
-        err instanceof Error
-          ? err.message
-          : 'Unable to reach server-side AI question generator.',
-    };
-  }
 }
 
 // ============================================================================
@@ -230,6 +169,7 @@ export async function fetchStudentMockHub(studentId: string): Promise<StudentMoc
     }
 
     const examNameById = new Map(enrollments.map((e) => [e.exam.id, e.exam.name]));
+    const examSlugById = new Map(enrollments.map((e) => [e.exam.id, e.exam.slug]));
 
     const readinessByExamId = new Map<string, MockSubjectReadiness[]>();
     for (const item of readinessResponses) {
@@ -243,6 +183,7 @@ export async function fetchStudentMockHub(studentId: string): Promise<StudentMoc
         id: String(row.id),
         exam_id: String(row.exam_id),
         exam_name: examNameById.get(String(row.exam_id)),
+        exam_slug: examSlugById.get(String(row.exam_id)),
         mock_exam_id: row.mock_exam_id ? String(row.mock_exam_id) : null,
         title: String(row.title),
         mode: (row.mode as MockExamMode) || 'full_mock',
@@ -315,7 +256,7 @@ export async function fetchStudentMockAttempts(
         .not('submitted_at', 'is', null)
         .order('submitted_at', { ascending: false })
         .limit(limit),
-      supabase.from('exams').select('id, name'),
+      supabase.from('exams').select('id, name, slug'),
     ]);
 
     if (attemptsRes.error) {
@@ -328,30 +269,37 @@ export async function fetchStudentMockAttempts(
       return { attempts: [], error: mapMockError(attemptsRes.error) };
     }
 
-    const examNameMap = new Map(
-      ((examsRes.data ?? []) as Array<Pick<Exam, 'id' | 'name'>>).map((e) => [e.id, e.name])
+    const examMetaMap = new Map(
+      ((examsRes.data ?? []) as Array<Pick<Exam, 'id' | 'name' | 'slug'>>).map((e) => [
+        e.id,
+        { name: e.name, slug: e.slug },
+      ])
     );
 
     const attempts: MockAttemptSummary[] = ((attemptsRes.data ?? []) as Array<Record<string, unknown>>).map(
-      (row) => ({
-        id: String(row.id),
-        exam_id: String(row.exam_id),
-        exam_name: examNameMap.get(String(row.exam_id)),
-        mock_exam_id: row.mock_exam_id ? String(row.mock_exam_id) : null,
-        title: String(row.title),
-        mode: (row.mode as MockExamMode) || 'full_mock',
-        duration_minutes: Number(row.duration_minutes) || 120,
-        started_at: String(row.started_at),
-        submitted_at: row.submitted_at ? String(row.submitted_at) : null,
-        elapsed_seconds: row.elapsed_seconds !== null ? Number(row.elapsed_seconds) : null,
-        total_score_400: Number(row.total_score_400) || 0,
-        total_correct: Number(row.total_correct) || 0,
-        total_questions: Number(row.total_questions) || 0,
-        percentage: Number(row.percentage) || 0,
-        subject_scores: Array.isArray(row.subject_scores)
-          ? (row.subject_scores as MockSubjectBreakdown[])
-          : [],
-      })
+      (row) => {
+        const meta = examMetaMap.get(String(row.exam_id));
+        return {
+          id: String(row.id),
+          exam_id: String(row.exam_id),
+          exam_name: meta?.name,
+          exam_slug: meta?.slug,
+          mock_exam_id: row.mock_exam_id ? String(row.mock_exam_id) : null,
+          title: String(row.title),
+          mode: (row.mode as MockExamMode) || 'full_mock',
+          duration_minutes: Number(row.duration_minutes) || 120,
+          started_at: String(row.started_at),
+          submitted_at: row.submitted_at ? String(row.submitted_at) : null,
+          elapsed_seconds: row.elapsed_seconds !== null ? Number(row.elapsed_seconds) : null,
+          total_score_400: Number(row.total_score_400) || 0,
+          total_correct: Number(row.total_correct) || 0,
+          total_questions: Number(row.total_questions) || 0,
+          percentage: Number(row.percentage) || 0,
+          subject_scores: Array.isArray(row.subject_scores)
+            ? (row.subject_scores as MockSubjectBreakdown[])
+            : [],
+        };
+      }
     );
 
     void cacheMockAttempts(studentId, attempts);

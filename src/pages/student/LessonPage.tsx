@@ -11,10 +11,13 @@ import {
   FileDown,
   Pin,
   PinOff,
+  PlayCircle,
   VideoOff,
+  Wifi,
   WifiOff,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useDataSaver } from '../../hooks/useDataSaver';
 import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { accessMaterialFile, isSafeExternalHttpUrl, validateMaterialUrl } from '../../lib/materialLinks';
 import { getSafeYouTubeEmbedUrl } from '../../lib/youtube';
@@ -50,6 +53,7 @@ const fileTypeLabels: Record<MaterialFileType, string> = {
 export function LessonPage() {
   const { lessonId = '' } = useParams();
   const { user, profile, profileLoading } = useAuth();
+  const { dataLite, setDataLite } = useDataSaver();
   const { isOnline, downloadedLessonIds, pendingActions, refreshVault } = useOfflineSync();
   const isAdmin = profile?.role === 'admin';
 
@@ -59,6 +63,7 @@ export function LessonPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [isStickyMobileVideo, setIsStickyMobileVideo] = useState(true);
+  const [loadVideoInDataLite, setLoadVideoInDataLite] = useState(false);
   const [togglingComplete, setTogglingComplete] = useState(false);
   const [savingOffline, setSavingOffline] = useState(false);
   const [offlineFeedback, setOfflineFeedback] = useState<{
@@ -123,6 +128,7 @@ export function LessonPage() {
     setDetail(res.data);
     setAttachedTests(testsRes.tests);
     setLessonStats(nextLessonStats);
+    setLoadVideoInDataLite(false);
     setLoading(false);
   }, [user, isAdmin, profileLoading, lessonId]);
 
@@ -341,6 +347,33 @@ export function LessonPage() {
             <p className="mt-1 text-xs text-slate-300 max-w-md leading-relaxed">
               Video streaming requires internet data, but your lesson notes, saved study PDFs, and attached practice tests below are ready offline.
             </p>
+          </div>
+        ) : embedUrl && dataLite && !loadVideoInDataLite ? (
+          <div className="aspect-video w-full bg-slate-900 text-slate-200 flex flex-col items-center justify-center p-6 text-center">
+            <Wifi className="h-8 w-8 text-phosters-400" aria-hidden="true" />
+            <p className="mt-3 text-sm font-semibold text-white">
+              Data-Lite Mode active — video paused
+            </p>
+            <p className="mt-1 text-xs text-slate-300 max-w-md leading-relaxed">
+              Video streaming is held back to save your mobile data. Read the lesson notes, study PDFs, and practice tests below first, or tap below to load this video.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setLoadVideoInDataLite(true)}
+                className="inline-flex items-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-phosters-600 text-white text-xs sm:text-sm font-semibold hover:bg-phosters-700 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <PlayCircle className="h-4 w-4" aria-hidden="true" />
+                <span>Load Video (Uses Data)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDataLite(false)}
+                className="inline-flex items-center min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-700 bg-slate-800 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                Turn Off Data-Lite
+              </button>
+            </div>
           </div>
         ) : embedUrl ? (
           <div className="aspect-video w-full bg-black">

@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Calculator,
   CheckCircle2,
   Clock,
   Flag,
@@ -16,7 +17,9 @@ import {
   fetchPendingMockSession,
   submitMockExamAttempt,
 } from '../../services/mockExamService';
+import { isUiPostUtmeExam } from '../../data/admissionGuide';
 import type { MockSessionPayload } from '../../types/cbt';
+import { JambCalculator } from '../../components/cbt/JambCalculator';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -43,6 +46,7 @@ export function MockTakePage() {
   const [flaggedIds, setFlaggedIds] = useState<Set<string>>(new Set());
   const [remainingSeconds, setRemainingSeconds] = useState<number>(7200);
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -269,6 +273,8 @@ export function MockTakePage() {
         goNext();
       } else if (e.key === 'ArrowLeft' || upper === 'P') {
         goPrevious();
+      } else if (upper === 'S') {
+        setConfirmSubmitOpen(true);
       }
     };
 
@@ -296,6 +302,12 @@ export function MockTakePage() {
     );
   }
 
+  const isUiPostUtme = isUiPostUtmeExam(
+    session.exam_slug,
+    session.exam_name,
+    session.title
+  );
+
   if (queuedOfflineNotice) {
     return (
       <div className="max-w-xl mx-auto py-8 space-y-5">
@@ -303,7 +315,7 @@ export function MockTakePage() {
           All {totalAnswered} of {session.total_questions} answered questions from{' '}
           <strong className="font-semibold">{session.title}</strong> are safely stored in your
           Offline Study Queue. As soon as your connection returns, Phosters will submit and compute
-          your /400 score automatically.
+          your {isUiPostUtme ? '/100' : '/400'} score automatically.
         </Alert>
         <div className="flex flex-wrap gap-3">
           <Link
@@ -338,6 +350,7 @@ export function MockTakePage() {
           <div className="min-w-0">
             <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
               {session.exam_name} · {totalAnswered}/{session.total_questions} answered
+              {isUiPostUtme ? ' · UI rules: No Calculator · /100 scale' : ''}
             </p>
             <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 truncate">
               {session.title}
@@ -360,6 +373,23 @@ export function MockTakePage() {
               <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span>{formatCountdown(remainingSeconds)}</span>
             </div>
+
+            {!isUiPostUtme && (
+              <button
+                type="button"
+                onClick={() => setCalculatorOpen((v) => !v)}
+                aria-pressed={calculatorOpen}
+                className={[
+                  'inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-lg border text-xs sm:text-sm font-semibold cursor-pointer transition-colors whitespace-nowrap shrink-0',
+                  calculatorOpen
+                    ? 'border-phosters-600 bg-phosters-50 dark:bg-phosters-900/40 text-phosters-700 dark:text-phosters-300'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800',
+                ].join(' ')}
+              >
+                <Calculator className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="hidden sm:inline">Calculator</span>
+              </button>
+            )}
 
             <Button
               type="button"
@@ -511,7 +541,7 @@ export function MockTakePage() {
                 </Button>
 
                 <p className="hidden sm:block text-xs text-slate-400 dark:text-slate-500">
-                  Keys: A–D select · N / P navigate
+                  Keys: A–D select · N / P navigate · S submit
                 </p>
 
                 {isLastGlobalQuestion ? (
@@ -660,6 +690,13 @@ export function MockTakePage() {
             </div>
           </Card>
         </div>
+      )}
+
+      {!isUiPostUtme && (
+        <JambCalculator
+          open={calculatorOpen}
+          onClose={() => setCalculatorOpen(false)}
+        />
       )}
     </div>
   );

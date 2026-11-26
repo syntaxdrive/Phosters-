@@ -84,6 +84,12 @@ const MockTakePage = lazy(() =>
 const MockResultDetailPage = lazy(() =>
   import('./pages/student/MockResultDetailPage').then((m) => ({ default: m.MockResultDetailPage }))
 );
+const MissedQuestionsPage = lazy(() =>
+  import('./pages/student/MissedQuestionsPage').then((m) => ({ default: m.MissedQuestionsPage }))
+);
+const AdmissionGuidePage = lazy(() =>
+  import('./pages/student/AdmissionGuidePage').then((m) => ({ default: m.AdmissionGuidePage }))
+);
 const AdminDashboardPage = lazy(() =>
   import('./pages/admin/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage }))
 );
@@ -181,6 +187,8 @@ export default function App() {
                     <Route path="/app/mocks" element={<MockExamsPage />} />
                     <Route path="/app/mocks/:attemptId" element={<MockTakePage />} />
                     <Route path="/app/mocks/results/:attemptId" element={<MockResultDetailPage />} />
+                    <Route path="/app/missed-questions" element={<MissedQuestionsPage />} />
+                    <Route path="/app/admission-guide" element={<AdmissionGuidePage />} />
 
                   <Route element={<AdminRoute />}>
                     <Route path="/admin" element={<AdminDashboardPage />} />

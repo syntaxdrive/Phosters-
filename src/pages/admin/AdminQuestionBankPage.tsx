@@ -1,38 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CheckSquare,
-  Download,
-  FileText,
   Filter,
-  FolderOpen,
-  Link2,
-  Loader2,
-  ScanText,
-  Sparkles,
+  Plus,
   Square,
   Trash2,
-  Upload,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { fetchAdminLessonsList } from '../../services/adminService';
 import {
   bulkApproveBankQuestions,
-  convertDocumentFile,
   deleteBankQuestion,
-  estimateClientQuestionCount,
   fetchQuestionBankItems,
-  importPublicDriveFile,
-  listPublicDriveFolder,
-  ocrPdfFile,
-  parseQuestionChunkText,
   saveParsedQuestionsToBank,
-  splitTextClientChunks,
   updateBankQuestionStatus,
 } from '../../services/questionBankService';
 import type { Exam, Subject, Topic } from '../../types/database';
 import type {
-  DocumentSourceFormat,
-  DriveFolderEntry,
   ParsedBankQuestionDraft,
   QuestionBankItem,
   QuestionBankStatus,
@@ -42,21 +26,39 @@ import { AdminNav } from '../../components/admin/AdminNav';
 import { Alert } from '../../components/ui/Alert';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { Input } from '../../components/ui/Input';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/States';
+
+const OPTION_KEYS = ['A', 'B', 'C', 'D'];
 
 function localKey() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-const ACCEPTED_EXTENSIONS = '.pdf,.docx,.txt,.csv,.tsv,.md,.html,.htm,.rtf,.json';
+function createEmptyBankQuestion(defaultYear: number | null): ParsedBankQuestionDraft {
+  return {
+    localKey: localKey(),
+    questionText: '',
+    explanation: '',
+    examYear: defaultYear,
+    sectionLabel: '',
+    difficulty: 'medium',
+    points: 1,
+    needsDiagram: false,
+    hasKeyIssue: false,
+    include: true,
+    options: OPTION_KEYS.map((key, idx) => ({
+      localKey: localKey(),
+      optionKey: key,
+      optionText: '',
+      isCorrect: idx === 0,
+    })),
+  };
+}
 
 export function AdminQuestionBankPage() {
   const { user } = useAuth();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const parseAbortRef = useRef<AbortController | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'ingest' | 'library'>('ingest');
+  const [activeTab, setActiveTab] = useState<'create' | 'library'>('create');
 
   // Shared taxonomy data
   const [exams, setExams] = useState<Exam[]>([]);
@@ -66,38 +68,19 @@ export function AdminQuestionBankPage() {
   const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
   const [migrationMissing, setMigrationMissing] = useState(false);
 
-  // Target metadata for ingestion
+  // Target metadata for manual entry
   const [targetExamId, setTargetExamId] = useState('');
   const [targetSubjectId, setTargetSubjectId] = useState('');
   const [targetTopicId, setTargetTopicId] = useState('');
   const [defaultYearInput, setDefaultYearInput] = useState('');
-  const [generateMissingExplanations, setGenerateMissingExplanations] = useState(true);
+  const [sourceReference, setSourceReference] = useState('Manual Entry');
 
-  // Conversion & OCR state
-  const [isDragging, setIsDragging] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [sourceFileName, setSourceFileName] = useState('pasted-questions.txt');
-  const [sourceFormat, setSourceFormat] = useState<DocumentSourceFormat>('paste');
-  const [pageCount, setPageCount] = useState(0);
-  const [convertedText, setConvertedText] = useState('');
-  const [isScannedLikely, setIsScannedLikely] = useState(false);
-  const [converting, setConverting] = useState(false);
-  const [runningOcr, setRunningOcr] = useState(false);
-  const [ingestError, setIngestError] = useState<string | null>(null);
-  const [ingestNotice, setIngestNotice] = useState<string | null>(null);
-
-  // Public Google Drive folder / file import
-  const [driveUrlInput, setDriveUrlInput] = useState('');
-  const [driveLoadingList, setDriveLoadingList] = useState(false);
-  const [driveFolderTitle, setDriveFolderTitle] = useState('');
-  const [driveEntries, setDriveEntries] = useState<DriveFolderEntry[]>([]);
-  const [driveImportingId, setDriveImportingId] = useState<string | null>(null);
-
-  // AI chunked parsing & review queue
-  const [parsing, setParsing] = useState(false);
-  const [parseProgress, setParseProgress] = useState<{ current: number; total: number } | null>(null);
-  const [reviewQueue, setReviewQueue] = useState<ParsedBankQuestionDraft[]>([]);
+  const [draftQueue, setDraftQueue] = useState<ParsedBankQuestionDraft[]>(() => [
+    createEmptyBankQuestion(null),
+  ]);
   const [savingBatch, setSavingBatch] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createNotice, setCreateNotice] = useState<string | null>(null);
 
   // Bank library tab state
   const [libraryItems, setLibraryItems] = useState<QuestionBankItem[]>([]);
@@ -184,12 +167,6 @@ export function AdminQuestionBankPage() {
     }
   }, [activeTab, loadLibrary]);
 
-  useEffect(() => {
-    return () => {
-      parseAbortRef.current?.abort();
-    };
-  }, []);
-
   const matchingTopics = useMemo(
     () => topics.filter((t) => t.exam_id === targetExamId && t.subject_id === targetSubjectId),
     [topics, targetExamId, targetSubjectId]
@@ -204,327 +181,35 @@ export function AdminQuestionBankPage() {
     [subjects]
   );
 
-  const liveChunks = useMemo(() => splitTextClientChunks(convertedText), [convertedText]);
-  const estimatedQuestions = useMemo(
-    () => estimateClientQuestionCount(convertedText),
-    [convertedText]
+  const parsedDefaultYear = useMemo(() => {
+    const parsed = Number(defaultYearInput.trim());
+    return Number.isFinite(parsed) && parsed >= 1978 && parsed <= 2035 ? parsed : null;
+  }, [defaultYearInput]);
+
+  const includedCount = useMemo(
+    () => draftQueue.filter((q) => q.include).length,
+    [draftQueue]
   );
 
-  const queueStats = useMemo(() => {
-    let included = 0;
-    let keyIssues = 0;
-    let diagrams = 0;
-    for (const q of reviewQueue) {
-      if (q.include) included += 1;
-      if (q.hasKeyIssue) keyIssues += 1;
-      if (q.needsDiagram) diagrams += 1;
-    }
-    return { total: reviewQueue.length, included, keyIssues, diagrams };
-  }, [reviewQueue]);
-
-  async function processUploadedFile(file: File) {
-    setIngestError(null);
-    setIngestNotice(null);
-    setSelectedFile(file);
-    setSourceFileName(file.name);
-    setConverting(true);
-
-    const res = await convertDocumentFile(file);
-    setConverting(false);
-
-    if (res.error || !res.result) {
-      setIngestError(res.error || 'Could not convert this file.');
-      return;
-    }
-
-    setSourceFormat(res.result.sourceFormat);
-    setPageCount(res.result.pageCount);
-    setConvertedText(res.result.convertedText);
-    setIsScannedLikely(res.result.isScannedLikely);
-
-    if (res.result.isScannedLikely) {
-      setIngestNotice(
-        `Extracted ${res.result.charCount.toLocaleString()} characters across ${res.result.pageCount} PDF pages. This PDF appears scanned or image-based — run Gemini OCR below to extract text.`
-      );
-    } else {
-      setIngestNotice(
-        `Converted ${file.name} (${res.result.sourceFormat.toUpperCase()}) into ${res.result.charCount.toLocaleString()} characters of clean .txt (~${res.result.estimatedQuestions} questions, ${res.result.chunks.length} AI batch chunks).`
-      );
-    }
+  function addDraftQuestion() {
+    setDraftQueue((prev) => [...prev, createEmptyBankQuestion(parsedDefaultYear)]);
   }
 
-  function handleDrop(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      void processUploadedFile(file);
-    }
-  }
-
-  async function handleRunOcr() {
-    if (!selectedFile) return;
-    setIngestError(null);
-    setIngestNotice(null);
-    setRunningOcr(true);
-
-    const res = await ocrPdfFile(selectedFile);
-    setRunningOcr(false);
-
-    if (res.error || !res.result) {
-      setIngestError(res.error || 'OCR could not read text from this PDF.');
-      return;
-    }
-
-    setConvertedText(res.result.convertedText);
-    setIsScannedLikely(false);
-    setIngestNotice(
-      `Gemini OCR extracted ${res.result.charCount.toLocaleString()} characters (~${res.result.estimatedQuestions} questions, ${res.result.chunks.length} batch chunks).`
-    );
-  }
-
-  function tryMatchSubjectFromTitle(title: string) {
-    const lower = title.toLowerCase();
-    const matched = subjects.find((s) => {
-      const subLower = s.name.toLowerCase();
-      if (lower.includes(subLower)) return true;
-      if (subLower.includes('english') && (lower.includes('english') || lower.includes('use of eng'))) {
-        return true;
-      }
-      if (subLower.includes('literature') && lower.includes('literature')) {
-        return true;
-      }
-      if (subLower.includes('account') && lower.includes('account')) {
-        return true;
-      }
-      if ((subLower.includes('christian') || subLower.includes('crk') || subLower.includes('crs')) && (lower.includes('crk') || lower.includes('crs'))) {
-        return true;
-      }
-      return false;
+  function removeDraftQuestion(qKey: string) {
+    setDraftQueue((prev) => {
+      if (prev.length <= 1) return [createEmptyBankQuestion(parsedDefaultYear)];
+      return prev.filter((q) => q.localKey !== qKey);
     });
-    if (matched) {
-      setTargetSubjectId(matched.id);
-      setTargetTopicId('');
-    }
-  }
-
-  async function handleBrowseDriveLink(overrideUrlOrId?: string) {
-    const target = (overrideUrlOrId ?? driveUrlInput).trim();
-    if (!target) {
-      setIngestError('Paste a public Google Drive folder or file link first.');
-      return;
-    }
-
-    setIngestError(null);
-    setIngestNotice(null);
-    setDriveLoadingList(true);
-
-    const res = await listPublicDriveFolder(target);
-    setDriveLoadingList(false);
-
-    if (res.error || !res.result) {
-      setIngestError(res.error || 'Could not list Google Drive link.');
-      return;
-    }
-
-    setDriveFolderTitle(res.result.folderTitle);
-    setDriveEntries(res.result.entries);
-    setIngestNotice(
-      `Found ${res.result.entries.length} item${res.result.entries.length === 1 ? '' : 's'} in "${res.result.folderTitle}". Click any file to convert it into plain .txt.`
-    );
-  }
-
-  async function handleImportDriveEntry(entry: DriveFolderEntry) {
-    if (entry.isFolder) {
-      const folderUrl = `https://drive.google.com/drive/folders/${entry.id}`;
-      setDriveUrlInput(folderUrl);
-      await handleBrowseDriveLink(folderUrl);
-      return;
-    }
-
-    setIngestError(null);
-    setIngestNotice(null);
-    setDriveImportingId(entry.id);
-
-    tryMatchSubjectFromTitle(entry.title);
-    const res = await importPublicDriveFile(entry.id, entry.title);
-    setDriveImportingId(null);
-
-    if (res.error || !res.result) {
-      setIngestError(res.error || `Could not import "${entry.title}" from Google Drive.`);
-      return;
-    }
-
-    setSelectedFile(null);
-    setSourceFileName(res.result.fileName);
-    setSourceFormat(res.result.sourceFormat);
-    setPageCount(res.result.pageCount);
-    setConvertedText(res.result.convertedText);
-    setIsScannedLikely(res.result.isScannedLikely);
-
-    const hasAnswerKeys = /ANSWER(?:S)?\s*KEY(?:S)?/i.test(res.result.convertedText);
-    if (res.result.isScannedLikely) {
-      setIngestNotice(
-        `Imported "${entry.title}" (${res.result.pageCount} pages), but text density is low — download and upload via Gemini OCR if it is scanned.`
-      );
-    } else if (!hasAnswerKeys) {
-      setIngestNotice(
-        `Imported "${entry.title}" (${res.result.pageCount} pages, ~${res.result.estimatedQuestions} est. questions). Note: No Answer Key section was detected inside this PDF, so verify correct options in the Review Queue before publishing.`
-      );
-    } else {
-      setIngestNotice(
-        `Imported "${entry.title}" (${res.result.pageCount} pages, ~${res.result.estimatedQuestions} est. questions, ${res.result.chunks.length} answer-key-linked chunks ready for AI parsing).`
-      );
-    }
-  }
-
-  function handleDownloadTxt() {
-    if (!convertedText.trim()) return;
-    const baseName = sourceFileName.replace(/\.[^.]+$/, '') || 'past-questions';
-    const blob = new Blob([convertedText], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${baseName}-converted.txt`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  async function handleParseWithAi(appendMode: boolean) {
-    if (!convertedText.trim()) {
-      setIngestError('Upload a file or paste past-question text before parsing.');
-      return;
-    }
-
-    const chunks = splitTextClientChunks(convertedText);
-    if (chunks.length === 0) {
-      setIngestError('No parseable text chunks were found.');
-      return;
-    }
-
-    setIngestError(null);
-    setIngestNotice(null);
-    setParsing(true);
-    setParseProgress({ current: 0, total: chunks.length });
-
-    const abortController = new AbortController();
-    parseAbortRef.current = abortController;
-
-    const examHint = examNameById.get(targetExamId) ?? 'JAMB UTME';
-    const subjectHint = subjectNameById.get(targetSubjectId) ?? '';
-    const parsedYear = Number(defaultYearInput.trim());
-    const validYear =
-      Number.isFinite(parsedYear) && parsedYear >= 1978 && parsedYear <= 2035
-        ? parsedYear
-        : null;
-
-    if (!appendMode) {
-      setReviewQueue([]);
-    }
-
-    let extractedCount = 0;
-
-    for (let idx = 0; idx < chunks.length; idx++) {
-      if (abortController.signal.aborted) break;
-      setParseProgress({ current: idx + 1, total: chunks.length });
-
-      const res = await parseQuestionChunkText(
-        {
-          chunkText: chunks[idx],
-          examHint,
-          subjectHint,
-          defaultYear: validYear,
-          generateMissingExplanations,
-        },
-        abortController.signal
-      );
-
-      if (res.error || !res.result) {
-        setIngestError(
-          `Stopped at chunk ${idx + 1} of ${chunks.length}: ${res.error || 'AI parsing failed.'}`
-        );
-        break;
-      }
-
-      const mapped: ParsedBankQuestionDraft[] = res.result.questions.map((item) => ({
-        ...item,
-        localKey: localKey(),
-        include: true,
-        options: item.options.map((opt) => ({
-          ...opt,
-          localKey: localKey(),
-        })),
-      }));
-
-      extractedCount += mapped.length;
-      setReviewQueue((prev) => [...prev, ...mapped]);
-    }
-
-    setParsing(false);
-    setParseProgress(null);
-    parseAbortRef.current = null;
-
-    if (extractedCount > 0) {
-      setIngestNotice(
-        `AI extracted ${extractedCount} structured questions into the Review Queue below.`
-      );
-    }
-  }
-
-  function handleStopParsing() {
-    parseAbortRef.current?.abort();
-  }
-
-  async function handleSaveBatch(targetStatus: QuestionBankStatus) {
-    if (!user) return;
-    setIngestError(null);
-    setIngestNotice(null);
-    setSavingBatch(true);
-
-    const parsedYear = Number(defaultYearInput.trim());
-    const validYear =
-      Number.isFinite(parsedYear) && parsedYear >= 1978 && parsedYear <= 2035
-        ? parsedYear
-        : null;
-
-    const res = await saveParsedQuestionsToBank({
-      fileName: sourceFileName,
-      sourceFormat,
-      rawCharCount: convertedText.length,
-      examId: targetExamId || null,
-      subjectId: targetSubjectId || null,
-      topicId: targetTopicId || null,
-      defaultYear: validYear,
-      targetStatus,
-      userId: user.id,
-      questions: reviewQueue,
-    });
-
-    setSavingBatch(false);
-    if (res.migrationMissing) {
-      setMigrationMissing(true);
-    }
-    if (res.error) {
-      setIngestError(res.error);
-      return;
-    }
-
-    setReviewQueue((prev) => prev.filter((q) => !q.include));
-    setIngestNotice(
-      `Saved ${res.insertedCount} ${targetStatus === 'approved' ? 'approved' : 'draft'} questions to the Question Bank.`
-    );
   }
 
   function updateDraftQuestion(qKey: string, patch: Partial<ParsedBankQuestionDraft>) {
-    setReviewQueue((prev) =>
+    setDraftQueue((prev) =>
       prev.map((q) => (q.localKey === qKey ? { ...q, ...patch } : q))
     );
   }
 
   function updateDraftOption(qKey: string, optKey: string, optionText: string) {
-    setReviewQueue((prev) =>
+    setDraftQueue((prev) =>
       prev.map((q) => {
         if (q.localKey !== qKey) return q;
         return {
@@ -536,7 +221,7 @@ export function AdminQuestionBankPage() {
   }
 
   function setDraftCorrectOption(qKey: string, optKey: string) {
-    setReviewQueue((prev) =>
+    setDraftQueue((prev) =>
       prev.map((q) => {
         if (q.localKey !== qKey) return q;
         return {
@@ -545,6 +230,51 @@ export function AdminQuestionBankPage() {
           options: q.options.map((o) => ({ ...o, isCorrect: o.localKey === optKey })),
         };
       })
+    );
+  }
+
+  async function handleSaveBatch(targetStatus: QuestionBankStatus) {
+    if (!user) return;
+    setCreateError(null);
+    setCreateNotice(null);
+    setSavingBatch(true);
+
+    const totalChars = draftQueue.reduce(
+      (sum, q) =>
+        sum +
+        q.questionText.length +
+        q.options.reduce((oSum, o) => oSum + o.optionText.length, 0),
+      0
+    );
+
+    const res = await saveParsedQuestionsToBank({
+      fileName: sourceReference.trim() || 'Manual Entry',
+      sourceFormat: 'paste',
+      rawCharCount: totalChars,
+      examId: targetExamId || null,
+      subjectId: targetSubjectId || null,
+      topicId: targetTopicId || null,
+      defaultYear: parsedDefaultYear,
+      targetStatus,
+      userId: user.id,
+      questions: draftQueue,
+    });
+
+    setSavingBatch(false);
+    if (res.migrationMissing) {
+      setMigrationMissing(true);
+    }
+    if (res.error) {
+      setCreateError(res.error);
+      return;
+    }
+
+    const remaining = draftQueue.filter((q) => !q.include);
+    setDraftQueue(
+      remaining.length > 0 ? remaining : [createEmptyBankQuestion(parsedDefaultYear)]
+    );
+    setCreateNotice(
+      `Saved ${res.insertedCount} ${targetStatus === 'approved' ? 'approved' : 'draft'} question${res.insertedCount === 1 ? '' : 's'} to the Question Bank.`
     );
   }
 
@@ -594,7 +324,7 @@ export function AdminQuestionBankPage() {
     setLibraryItems((prev) =>
       prev.map((q) => (selectedBankIds.has(q.id) ? { ...q, status: 'approved' } : q))
     );
-    setLibraryNotice(`Approved ${ids.length} selected questions for Tutor CBT builders.`);
+    setLibraryNotice(`Approved ${ids.length} selected questions for Tutor CBT & Mock builders.`);
     setSelectedBankIds(new Set());
   }
 
@@ -614,26 +344,22 @@ export function AdminQuestionBankPage() {
             Super Admin Question Bank
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Upload PDF, DOCX, CSV, HTML, RTF, or TXT past-question packs, convert to clean plain{' '}
-            <code className="font-mono text-xs bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">
-              .txt
-            </code>
-            , and parse verified MCQs for Tutors.
+            Manually add, organize, and approve past or practice questions for Tutors and Mock Exams.
           </p>
         </div>
 
         <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800 rounded-lg gap-1 self-start sm:self-auto">
           <button
             type="button"
-            onClick={() => setActiveTab('ingest')}
+            onClick={() => setActiveTab('create')}
             className={[
               'min-h-[40px] px-4 py-1.5 rounded-md text-sm font-semibold cursor-pointer transition-colors whitespace-nowrap',
-              activeTab === 'ingest'
+              activeTab === 'create'
                 ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
                 : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100',
             ].join(' ')}
           >
-            Upload &amp; Convert
+            Add Questions
           </button>
           <button
             type="button"
@@ -665,10 +391,10 @@ export function AdminQuestionBankPage() {
         </Alert>
       )}
 
-      {activeTab === 'ingest' ? (
+      {activeTab === 'create' ? (
         <div className="space-y-6">
-          {ingestError && <Alert tone="error">{ingestError}</Alert>}
-          {ingestNotice && <Alert tone="success">{ingestNotice}</Alert>}
+          {createError && <Alert tone="error">{createError}</Alert>}
+          {createNotice && <Alert tone="success">{createNotice}</Alert>}
 
           {/* Step 1: Target Exam / Subject / Topic */}
           <Card padding="lg" className="space-y-4">
@@ -676,7 +402,7 @@ export function AdminQuestionBankPage() {
               1. Target classification
             </h2>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="space-y-1.5">
                 <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">
                   Examination
@@ -689,7 +415,7 @@ export function AdminQuestionBankPage() {
                   }}
                   className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
                 >
-                  <option value="">Any / General</option>
+                  <option value="">Any / Shared Exam</option>
                   {exams.map((ex) => (
                     <option key={ex.id} value={ex.id}>
                       {ex.name}
@@ -710,7 +436,7 @@ export function AdminQuestionBankPage() {
                   }}
                   className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
                 >
-                  <option value="">Any / Mixed</option>
+                  <option value="">Select subject...</option>
                   {subjects.map((sub) => (
                     <option key={sub.id} value={sub.id}>
                       {sub.name}
@@ -728,523 +454,229 @@ export function AdminQuestionBankPage() {
                   onChange={(e) => setTargetTopicId(e.target.value)}
                   className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
                 >
-                  <option value="">Unassigned / Mixed topics</option>
-                  {matchingTopics.map((tp) => (
-                    <option key={tp.id} value={tp.id}>
-                      {tp.title}
+                  <option value="">All / Subject-wide</option>
+                  {matchingTopics.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title}
                     </option>
                   ))}
                 </select>
               </div>
 
-              <Input
-                label="Default Year (optional)"
-                type="number"
-                min={1978}
-                max={2035}
-                placeholder="e.g. 2019"
-                value={defaultYearInput}
-                onChange={(e) => setDefaultYearInput(e.target.value)}
-              />
-            </div>
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">
+                  Exam Year (optional)
+                </label>
+                <input
+                  type="number"
+                  min={1978}
+                  max={2035}
+                  placeholder="e.g. 2022"
+                  value={defaultYearInput}
+                  onChange={(e) => setDefaultYearInput(e.target.value)}
+                  className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100 tabular-nums"
+                />
+              </div>
 
-            <label className="inline-flex items-center gap-2.5 min-h-[40px] cursor-pointer">
-              <input
-                type="checkbox"
-                checked={generateMissingExplanations}
-                onChange={(e) => setGenerateMissingExplanations(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-phosters-600 focus:ring-phosters-600"
-              />
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                Auto-generate concise explanations when the source past question does not include one
-              </span>
-            </label>
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-slate-900 dark:text-slate-100">
+                  Source Label (optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. JAMB 2022 Pack"
+                  value={sourceReference}
+                  onChange={(e) => setSourceReference(e.target.value)}
+                  className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
+                />
+              </div>
+            </div>
           </Card>
 
-          {/* Step 2: Upload & Convert to .txt */}
-          <Card padding="lg" className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Step 2: Manual Questions Builder */}
+          <Card padding="lg" className="space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                  2. Upload document &amp; convert to clean .txt
+                  2. Compose questions ({draftQueue.length})
                 </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Supported: PDF, DOCX, TXT, CSV/TSV, Markdown, HTML, RTF, JSON (max 16 MB). Scanned PDFs can use Gemini OCR.
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Enter question stems, A–D options, mark the correct option, and save to the Question Bank.
                 </p>
               </div>
-              {convertedText.trim() && (
-                <Button type="button" variant="secondary" onClick={handleDownloadTxt}>
-                  <Download className="h-4 w-4" aria-hidden="true" />
-                  <span>Download Converted .txt</span>
-                </Button>
-              )}
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={addDraftQuestion}
+                className="whitespace-nowrap shrink-0 self-start sm:self-auto"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                <span>Add Another Question</span>
+              </Button>
             </div>
 
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                setIsDragging(true);
-              }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={handleDrop}
-              className={[
-                'rounded-xl border-2 border-dashed p-6 text-center transition-colors',
-                isDragging
-                  ? 'border-phosters-600 bg-phosters-50/60 dark:bg-phosters-950/30'
-                  : 'border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/50',
-              ].join(' ')}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={ACCEPTED_EXTENSIONS}
-                className="sr-only"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void processUploadedFile(file);
-                  e.target.value = '';
-                }}
-              />
-              <Upload
-                className="h-7 w-7 mx-auto text-phosters-600 dark:text-phosters-400"
-                aria-hidden="true"
-              />
-              <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                Drop a past-question document here, or choose a file
-              </p>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Cleanly converts PDFs, Word (.docx), HTML, RTF, CSV, and JSON into structured plain text ready for AI parsing.
-              </p>
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  loading={converting}
-                  onClick={() => fileInputRef.current?.click()}
+            <div className="space-y-4">
+              {draftQueue.map((q, qIdx) => (
+                <div
+                  key={q.localKey}
+                  className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-3 bg-white dark:bg-slate-900"
                 >
-                  <FileText className="h-4 w-4" aria-hidden="true" />
-                  <span>{converting ? 'Converting Document...' : 'Select Document File'}</span>
-                </Button>
-                {selectedFile && isScannedLikely && (
-                  <Button
-                    type="button"
-                    variant="primary"
-                    loading={runningOcr}
-                    onClick={() => void handleRunOcr()}
-                  >
-                    <ScanText className="h-4 w-4" aria-hidden="true" />
-                    <span>{runningOcr ? 'Running Gemini OCR...' : 'Run Gemini OCR on Scanned PDF'}</span>
-                  </Button>
-                )}
-              </div>
-            </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={q.include}
+                        onChange={(e) =>
+                          updateDraftQuestion(q.localKey, { include: e.target.checked })
+                        }
+                        className="h-4 w-4 rounded border-slate-300 text-phosters-600 focus:ring-phosters-600"
+                      />
+                      <span className="tabular-nums">Include Question #{qIdx + 1}</span>
+                    </label>
 
-            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-end gap-2.5">
-                <div className="flex-1 space-y-1">
-                  <label
-                    htmlFor="qb-drive-url"
-                    className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
-                  >
-                    Or load directly from a public Google Drive folder / file link
-                  </label>
-                  <input
-                    id="qb-drive-url"
-                    type="url"
-                    value={driveUrlInput}
-                    onChange={(e) => setDriveUrlInput(e.target.value)}
-                    placeholder="https://drive.google.com/open?id=... or .../folders/..."
-                    className="w-full min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600"
-                  />
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  loading={driveLoadingList}
-                  onClick={() => void handleBrowseDriveLink()}
-                >
-                  <Link2 className="h-4 w-4" aria-hidden="true" />
-                  <span>{driveLoadingList ? 'Loading Drive...' : 'Browse Drive Link'}</span>
-                </Button>
-              </div>
-
-              {driveEntries.length > 0 && (
-                <div className="rounded-lg border border-slate-200 dark:border-slate-800 divide-y divide-slate-200 dark:divide-slate-800 overflow-hidden">
-                  <div className="px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between gap-2 text-xs">
-                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
-                      {driveFolderTitle}
-                    </span>
-                    <span className="text-slate-500 dark:text-slate-400 tabular-nums shrink-0">
-                      {driveEntries.length} items
-                    </span>
-                  </div>
-                  <div className="max-h-64 overflow-y-auto divide-y divide-slate-200 dark:divide-slate-800">
-                    {driveEntries.map((entry) => {
-                      const isImporting = driveImportingId === entry.id;
-                      const hasAnswersInName = /and answers/i.test(entry.title);
-                      return (
-                        <div
-                          key={entry.id}
-                          className="px-3.5 py-2.5 flex items-center justify-between gap-3 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
-                        >
-                          <div className="min-w-0 flex items-center gap-2.5">
-                            {entry.isFolder ? (
-                              <FolderOpen className="h-4 w-4 text-slate-500 shrink-0" aria-hidden="true" />
-                            ) : (
-                              <FileText className="h-4 w-4 text-phosters-600 dark:text-phosters-400 shrink-0" aria-hidden="true" />
-                            )}
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                                {entry.title}
-                              </p>
-                              <p className="text-xs text-slate-500 dark:text-slate-400">
-                                {entry.isFolder
-                                  ? 'Subfolder'
-                                  : hasAnswersInName
-                                    ? 'Includes Answer Keys'
-                                    : 'Past-question pack'}
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            loading={isImporting}
-                            disabled={driveImportingId !== null && !isImporting}
-                            onClick={() => void handleImportDriveEntry(entry)}
-                          >
-                            <span>
-                              {entry.isFolder
-                                ? 'Open Folder'
-                                : isImporting
-                                  ? 'Converting...'
-                                  : 'Convert to .txt'}
-                            </span>
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
-                <span className="font-medium text-slate-700 dark:text-slate-300">
-                  Normalized plain text ({sourceFileName})
-                </span>
-                <div className="flex flex-wrap items-center gap-x-2 tabular-nums">
-                  {pageCount > 0 && (
-                    <>
-                      <span>{pageCount} pages</span>
-                      <span aria-hidden="true">·</span>
-                    </>
-                  )}
-                  <span>{convertedText.length.toLocaleString()} chars</span>
-                  <span aria-hidden="true">·</span>
-                  <span>~{estimatedQuestions} est. questions</span>
-                  <span aria-hidden="true">·</span>
-                  <span>{liveChunks.length} chunks</span>
-                </div>
-              </div>
-
-              <textarea
-                rows={10}
-                value={convertedText}
-                onChange={(e) => {
-                  setConvertedText(e.target.value);
-                  if (!selectedFile) {
-                    setSourceFormat('paste');
-                    setSourceFileName('pasted-questions.txt');
-                  }
-                }}
-                placeholder="Upload a file above or paste raw past questions (e.g. 1. Question... A. ... B. ... Answer: B)..."
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-3.5 font-mono text-xs sm:text-sm text-slate-900 dark:text-slate-100 leading-relaxed focus:outline-none focus:ring-2 focus:ring-phosters-600/20 focus:border-phosters-600"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-              <div className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-                {parsing && parseProgress
-                  ? `Parsing chunk ${parseProgress.current} of ${parseProgress.total}...`
-                  : 'Questions are split on question-number boundaries so multi-year PDFs process cleanly without truncation.'}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {parsing ? (
-                  <Button type="button" variant="danger" onClick={handleStopParsing}>
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                    <span>Stop Parsing</span>
-                  </Button>
-                ) : (
-                  <>
-                    {reviewQueue.length > 0 && (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        disabled={!convertedText.trim()}
-                        onClick={() => void handleParseWithAi(true)}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        aria-label={`Difficulty for question ${qIdx + 1}`}
+                        value={q.difficulty}
+                        onChange={(e) =>
+                          updateDraftQuestion(q.localKey, {
+                            difficulty: e.target.value as QuestionDifficulty,
+                          })
+                        }
+                        className="min-h-[36px] rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 text-xs text-slate-900 dark:text-slate-100"
                       >
-                        <Sparkles className="h-4 w-4" aria-hidden="true" />
-                        <span>Append Parsed Questions</span>
-                      </Button>
-                    )}
-                    <Button
-                      type="button"
-                      variant="primary"
-                      disabled={!convertedText.trim()}
-                      onClick={() => void handleParseWithAi(false)}
-                    >
-                      <Sparkles className="h-4 w-4" aria-hidden="true" />
-                      <span>Parse Text with AI</span>
-                    </Button>
-                  </>
-                )}
+                        <option value="easy">Easy</option>
+                        <option value="medium">Medium</option>
+                        <option value="hard">Hard</option>
+                      </select>
+
+                      <input
+                        type="number"
+                        aria-label={`Exam year for question ${qIdx + 1}`}
+                        min={1978}
+                        max={2035}
+                        placeholder="Year"
+                        value={q.examYear ?? ''}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          updateDraftQuestion(q.localKey, {
+                            examYear: Number.isFinite(n) && n > 1900 ? n : null,
+                          });
+                        }}
+                        className="w-24 min-h-[36px] rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 text-xs text-slate-900 dark:text-slate-100 tabular-nums"
+                      />
+
+                      <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 cursor-pointer px-2">
+                        <input
+                          type="checkbox"
+                          checked={q.needsDiagram}
+                          onChange={(e) =>
+                            updateDraftQuestion(q.localKey, { needsDiagram: e.target.checked })
+                          }
+                          className="h-3.5 w-3.5 rounded border-slate-300 text-phosters-600"
+                        />
+                        <span>Needs Diagram</span>
+                      </label>
+
+                      <button
+                        type="button"
+                        aria-label={`Remove draft question ${qIdx + 1}`}
+                        onClick={() => removeDraftQuestion(q.localKey)}
+                        className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded-md border border-slate-200 dark:border-slate-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <textarea
+                    rows={3}
+                    value={q.questionText}
+                    onChange={(e) =>
+                      updateDraftQuestion(q.localKey, { questionText: e.target.value })
+                    }
+                    placeholder="Enter question stem..."
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
+                  />
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {q.options.map((opt) => (
+                      <div key={opt.localKey} className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name={`bank-correct-${q.localKey}`}
+                          checked={opt.isCorrect}
+                          onChange={() => setDraftCorrectOption(q.localKey, opt.localKey)}
+                          aria-label={`Mark option ${opt.optionKey} as correct`}
+                          className="h-4 w-4 text-phosters-600 focus:ring-phosters-600 shrink-0"
+                        />
+                        <span className="w-5 text-xs font-bold text-slate-700 dark:text-slate-300 font-mono">
+                          {opt.optionKey}.
+                        </span>
+                        <input
+                          type="text"
+                          value={opt.optionText}
+                          onChange={(e) =>
+                            updateDraftOption(q.localKey, opt.localKey, e.target.value)
+                          }
+                          placeholder={`Option ${opt.optionKey}`}
+                          className="flex-1 min-h-[40px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                      Explanation (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={q.explanation}
+                      onChange={(e) =>
+                        updateDraftQuestion(q.localKey, { explanation: e.target.value })
+                      }
+                      placeholder="Short explanation shown after test submission"
+                      className="w-full min-h-[40px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={addDraftQuestion}
+                className="whitespace-nowrap"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                <span>Add Another Question</span>
+              </Button>
+
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  loading={savingBatch}
+                  disabled={includedCount === 0}
+                  onClick={() => void handleSaveBatch('draft')}
+                >
+                  Save Selected as Draft ({includedCount})
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  loading={savingBatch}
+                  disabled={includedCount === 0}
+                  onClick={() => void handleSaveBatch('approved')}
+                >
+                  Approve &amp; Publish to Question Bank ({includedCount})
+                </Button>
               </div>
             </div>
           </Card>
-
-          {/* Step 3: Review Queue */}
-          {reviewQueue.length > 0 && (
-            <section aria-labelledby="review-queue-heading" className="space-y-4">
-              <Card padding="lg" className="space-y-4">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div>
-                    <h2
-                      id="review-queue-heading"
-                      className="text-base font-bold text-slate-900 dark:text-slate-100"
-                    >
-                      3. Review &amp; verify parsed questions
-                    </h2>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-slate-600 dark:text-slate-400 tabular-nums">
-                      <span>{queueStats.total} extracted</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{queueStats.included} selected</span>
-                      <span aria-hidden="true">·</span>
-                      <span
-                        className={
-                          queueStats.keyIssues > 0
-                            ? 'font-semibold text-amber-700 dark:text-amber-400'
-                            : ''
-                        }
-                      >
-                        {queueStats.keyIssues} key checks
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span>{queueStats.diagrams} diagram flags</span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() =>
-                        setReviewQueue((prev) => prev.map((q) => ({ ...q, include: true })))
-                      }
-                    >
-                      Select All
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() =>
-                        setReviewQueue((prev) =>
-                          prev.map((q) => (q.needsDiagram ? { ...q, include: false } : q))
-                        )
-                      }
-                    >
-                      Exclude Diagram Qs
-                    </Button>
-                    <Button type="button" variant="ghost" onClick={() => setReviewQueue([])}>
-                      Clear Queue
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {reviewQueue.map((q, idx) => (
-                    <div
-                      key={q.localKey}
-                      className={[
-                        'rounded-xl border p-4 space-y-3 transition-colors',
-                        q.include
-                          ? 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
-                          : 'border-slate-200/70 dark:border-slate-800/60 bg-slate-50 dark:bg-slate-900/40 opacity-65',
-                      ].join(' ')}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <label className="inline-flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={q.include}
-                            onChange={(e) =>
-                              updateDraftQuestion(q.localKey, { include: e.target.checked })
-                            }
-                            className="h-4 w-4 rounded border-slate-300 text-phosters-600 focus:ring-phosters-600"
-                          />
-                          <span className="text-sm font-bold text-slate-900 dark:text-slate-100 tabular-nums">
-                            Question #{idx + 1}
-                          </span>
-                        </label>
-
-                        <div className="flex flex-wrap items-center gap-x-2 text-xs">
-                          {q.hasKeyIssue && (
-                            <span className="font-semibold text-amber-700 dark:text-amber-400">
-                              Verify answer key
-                            </span>
-                          )}
-                          {q.hasKeyIssue && q.needsDiagram && (
-                            <span className="text-slate-400" aria-hidden="true">
-                              ·
-                            </span>
-                          )}
-                          {q.needsDiagram && (
-                            <span className="font-semibold text-slate-600 dark:text-slate-400">
-                              Diagram / figure referenced
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                        <div className="md:col-span-6 space-y-1">
-                          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                            Question stem
-                          </label>
-                          <textarea
-                            rows={2}
-                            value={q.questionText}
-                            onChange={(e) =>
-                              updateDraftQuestion(q.localKey, { questionText: e.target.value })
-                            }
-                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
-                          />
-                        </div>
-
-                        <div className="md:col-span-2 space-y-1">
-                          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                            Year
-                          </label>
-                          <input
-                            type="number"
-                            min={1978}
-                            max={2035}
-                            value={q.examYear ?? ''}
-                            onChange={(e) => {
-                              const n = Number(e.target.value);
-                              updateDraftQuestion(q.localKey, {
-                                examYear: e.target.value && Number.isFinite(n) ? n : null,
-                              });
-                            }}
-                            className="w-full min-h-[40px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 text-sm text-slate-900 dark:text-slate-100 tabular-nums"
-                          />
-                        </div>
-
-                        <div className="md:col-span-2 space-y-1">
-                          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                            Difficulty
-                          </label>
-                          <select
-                            value={q.difficulty}
-                            onChange={(e) =>
-                              updateDraftQuestion(q.localKey, {
-                                difficulty: e.target.value as QuestionDifficulty,
-                              })
-                            }
-                            className="w-full min-h-[40px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 text-sm text-slate-900 dark:text-slate-100"
-                          >
-                            <option value="easy">Easy</option>
-                            <option value="medium">Medium</option>
-                            <option value="hard">Hard</option>
-                          </select>
-                        </div>
-
-                        <div className="md:col-span-2 space-y-1">
-                          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                            Section
-                          </label>
-                          <input
-                            type="text"
-                            value={q.sectionLabel}
-                            onChange={(e) =>
-                              updateDraftQuestion(q.localKey, { sectionLabel: e.target.value })
-                            }
-                            placeholder="e.g. Lexis & Structure"
-                            className="w-full min-h-[40px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 text-sm text-slate-900 dark:text-slate-100"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {q.options.map((opt) => (
-                          <div key={opt.localKey} className="flex items-center gap-2">
-                            <label className="inline-flex items-center gap-1.5 min-h-[40px] px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 cursor-pointer shrink-0">
-                              <input
-                                type="radio"
-                                name={`qb-correct-${q.localKey}`}
-                                checked={opt.isCorrect}
-                                onChange={() => setDraftCorrectOption(q.localKey, opt.localKey)}
-                                className="h-4 w-4 text-phosters-600 focus:ring-phosters-600"
-                              />
-                              <span className="text-xs font-mono font-semibold text-slate-800 dark:text-slate-200">
-                                {opt.optionKey}
-                              </span>
-                            </label>
-                            <input
-                              type="text"
-                              value={opt.optionText}
-                              onChange={(e) =>
-                                updateDraftOption(q.localKey, opt.localKey, e.target.value)
-                              }
-                              className="flex-1 min-h-[40px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
-                            />
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                          Explanation
-                        </label>
-                        <input
-                          type="text"
-                          value={q.explanation}
-                          onChange={(e) =>
-                            updateDraftQuestion(q.localKey, { explanation: e.target.value })
-                          }
-                          placeholder="Short explanation shown after test submission"
-                          className="w-full min-h-[40px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3 pt-2 border-t border-slate-200 dark:border-slate-800">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    loading={savingBatch}
-                    disabled={queueStats.included === 0}
-                    onClick={() => void handleSaveBatch('draft')}
-                  >
-                    Save Selected as Draft ({queueStats.included})
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    loading={savingBatch}
-                    disabled={queueStats.included === 0}
-                    onClick={() => void handleSaveBatch('approved')}
-                  >
-                    Approve &amp; Publish to Question Bank ({queueStats.included})
-                  </Button>
-                </div>
-              </Card>
-            </section>
-          )}
         </div>
       ) : (
         <div className="space-y-5">
@@ -1388,10 +820,10 @@ export function AdminQuestionBankPage() {
           ) : libraryItems.length === 0 ? (
             <EmptyState
               title="No bank questions match these filters"
-              description="Upload a past-question document in the Upload & Convert tab or broaden your search filters."
+              description="Add questions manually in the Add Questions tab or broaden your search filters."
               action={
-                <Button type="button" variant="primary" onClick={() => setActiveTab('ingest')}>
-                  Upload Past Questions
+                <Button type="button" variant="primary" onClick={() => setActiveTab('create')}>
+                  Add Bank Questions
                 </Button>
               }
             />

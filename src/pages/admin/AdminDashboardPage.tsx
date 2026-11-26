@@ -148,7 +148,7 @@ export function AdminDashboardPage() {
           <ol className="list-decimal pl-5 space-y-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
             <li>Organise your assigned subject(s) into ordered syllabus topics.</li>
             <li>Create lessons with YouTube video links and downloadable notes.</li>
-            <li>Build practice tests or set Mock Exam questions manually or with AI.</li>
+            <li>Build practice tests or set Mock Exam questions manually from your Question Bank or editor.</li>
             <li>Publish topics, lessons, and tests when ready for students.</li>
           </ol>
           <div className="pt-1 flex flex-wrap gap-3">

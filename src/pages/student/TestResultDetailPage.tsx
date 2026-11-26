@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, RotateCcw, Share2, XCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, RotateCcw, Share2, Target, XCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { fetchAttemptReview, fetchTestCourseContext } from '../../services/cbtService';
 import type { AttemptReviewPayload } from '../../types/cbt';
@@ -73,13 +73,25 @@ export function TestResultDetailPage() {
           <span>All Results</span>
         </Link>
 
-        <Link
-          to={`/app/tests/${attempt.test_id}`}
-          className="inline-flex items-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-        >
-          <RotateCcw className="h-4 w-4" aria-hidden="true" />
-          <span>Retake Test</span>
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          {attempt.correct_count < attempt.total_questions && (
+            <Link
+              to="/app/missed-questions"
+              className="inline-flex items-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-lg bg-phosters-600 text-white text-sm font-semibold hover:bg-phosters-700 transition-colors whitespace-nowrap shrink-0"
+            >
+              <Target className="h-4 w-4" aria-hidden="true" />
+              <span>Practice Missed</span>
+            </Link>
+          )}
+
+          <Link
+            to={`/app/tests/${attempt.test_id}`}
+            className="inline-flex items-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
+          >
+            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+            <span>Retake Test</span>
+          </Link>
+        </div>
       </div>
 
       <Card padding="lg" className="space-y-5">

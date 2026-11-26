@@ -42,12 +42,9 @@ VAPID_SUBJECT=mailto:notifications@phosters.com
 # Optional: Only needed for unattended Cron inactivity reminders (admin sends use your Admin session + anon key)
 SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
 CRON_SECRET=YOUR_RANDOM_CRON_SECRET
-
-# Required for Super Admin Question Bank AI parsing & scanned PDF OCR (/admin/question-bank)
-GEMINI_API_KEY=YOUR_GEMINI_API_KEY
 ```
 
-Never place `SUPABASE_SERVICE_ROLE_KEY`, `VAPID_PRIVATE_KEY`, `CRON_SECRET`, or `GEMINI_API_KEY` in any `VITE_*` variable.
+Never place `SUPABASE_SERVICE_ROLE_KEY`, `VAPID_PRIVATE_KEY`, or `CRON_SECRET` in any `VITE_*` variable.
 
 ### 3. Run the Database Migrations
 In your Supabase **SQL Editor**, run the migration scripts in order:

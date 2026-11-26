@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, Copy, Search } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Calculator, Check, Copy, Search } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import {
   fetchActiveExamsWithSubjects,
@@ -25,6 +25,9 @@ type LocalExamDraft = {
 export function ExamSetupPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const presetSlugsParam = searchParams.get('subjects') ?? '';
+  const presetCourseParam = searchParams.get('course') ?? '';
 
   const [exams, setExams] = useState<ExamWithSubjects[]>([]);
   const [drafts, setDrafts] = useState<Record<string, LocalExamDraft>>({});
@@ -61,6 +64,11 @@ export function ExamSetupPage() {
       enrollRes.enrollments.map((e) => [e.exam.id, e])
     );
 
+    const presetSlugs = presetSlugsParam
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+
     const nextDrafts: Record<string, LocalExamDraft> = {};
     for (const exam of examsRes.exams) {
       const existing = enrollmentByExamId.get(exam.id);
@@ -68,7 +76,7 @@ export function ExamSetupPage() {
         .filter((s) => s.isCompulsory)
         .map((s) => s.subjectId);
 
-      const initialSubjectIds = existing
+      let initialSubjectIds = existing
         ? Array.from(
             new Set([
               ...compulsoryIds,
@@ -77,9 +85,27 @@ export function ExamSetupPage() {
           )
         : compulsoryIds;
 
+      let enabled = Boolean(existing);
+      let intendedCourse = existing?.intendedCourse ?? '';
+
+      if (presetSlugs.length > 0 && (exam.slug === 'jamb-utme' || exam.slug === 'ui-post-utme')) {
+        const matchedIds = exam.availableSubjects
+          .filter((s) => presetSlugs.includes(s.subject.slug.toLowerCase()))
+          .map((s) => s.subjectId);
+        if (matchedIds.length > 0) {
+          initialSubjectIds = Array.from(new Set([...compulsoryIds, ...matchedIds]));
+          if (exam.slug === 'jamb-utme' || existing) {
+            enabled = true;
+          }
+        }
+        if (presetCourseParam) {
+          intendedCourse = presetCourseParam;
+        }
+      }
+
       nextDrafts[exam.id] = {
-        enabled: Boolean(existing),
-        intendedCourse: existing?.intendedCourse ?? '',
+        enabled,
+        intendedCourse,
         institution: existing?.institution ?? '',
         subjectIds: initialSubjectIds,
       };
@@ -88,7 +114,7 @@ export function ExamSetupPage() {
     setExams(examsRes.exams);
     setDrafts(nextDrafts);
     setLoading(false);
-  }, [user]);
+  }, [presetCourseParam, presetSlugsParam, user]);
 
   useEffect(() => {
     void loadData();
@@ -184,10 +210,10 @@ export function ExamSetupPage() {
 
     for (const exam of enabledExams) {
       const draft = drafts[exam.id];
-      if (exam.slug === 'jamb-utme') {
+      if (exam.slug === 'jamb-utme' || exam.slug === 'ui-post-utme') {
         if (draft.subjectIds.length !== 4) {
           setFormError(
-            `For JAMB UTME, select English Language plus 3 other subjects (currently ${draft.subjectIds.length} of 4 selected).`
+            `For ${exam.name}, select English Language plus 3 elective subjects (currently ${draft.subjectIds.length} of 4 selected).`
           );
           return;
         }
@@ -232,13 +258,23 @@ export function ExamSetupPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="space-y-2">
-        <Link
-          to="/app"
-          className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          <span>Back to Home</span>
-        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Link
+            to="/app"
+            className="inline-flex items-center gap-1.5 min-h-[44px] text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            <span>Back to Home</span>
+          </Link>
+
+          <Link
+            to="/app/admission-guide"
+            className="inline-flex items-center gap-1.5 min-h-[44px] px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs sm:text-sm font-semibold text-phosters-700 dark:text-phosters-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
+          >
+            <Calculator className="h-4 w-4" aria-hidden="true" />
+            <span>Subject Combo &amp; UI Aggregate Guide</span>
+          </Link>
+        </div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
           Examination &amp; subject selection
         </h1>
@@ -247,6 +283,12 @@ export function ExamSetupPage() {
         </p>
       </div>
 
+      {presetCourseParam && (
+        <Alert tone="info">
+          Pre-filled recommended JAMB UTME subjects for{' '}
+          <strong className="font-semibold">{presetCourseParam}</strong>. Review your 4 subjects below and tap Save Selections.
+        </Alert>
+      )}
       {formError && <Alert tone="error">{formError}</Alert>}
       {saveSuccess && (
         <Alert tone="success">Your examination profiles and subjects have been saved.</Alert>
@@ -325,13 +367,15 @@ export function ExamSetupPage() {
                           Subjects for {exam.name}{' '}
                           <span className="font-normal text-slate-500 dark:text-slate-400 tabular-nums">
                             ({draft.subjectIds.length}
-                            {isJamb ? ' / 4' : ''} selected)
+                            {isJamb || isUiPostUtme ? ' / 4' : ''} selected)
                           </span>
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
                           {isJamb
                             ? 'English Language is included automatically. Pick 3 additional subjects.'
-                            : 'Select the subjects required for your UI Post-UTME course.'}
+                            : isUiPostUtme
+                              ? 'UI Post-UTME mirrors your 4 JAMB subjects (English Language + 3 electives, 25 Qs each).'
+                              : 'Select the subjects required for your examination.'}
                         </p>
                       </div>
 

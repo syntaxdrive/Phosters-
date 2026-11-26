@@ -201,6 +201,7 @@ export type MockAttemptSummary = {
   id: string;
   exam_id: string;
   exam_name?: string;
+  exam_slug?: string;
   mock_exam_id: string | null;
   title: string;
   mode: MockExamMode;
@@ -270,36 +271,3 @@ export type AdminMockCustomQuestionInput = {
   points: number;
   options: AdminOptionDraft[];
 };
-
-// ============================================================================
-// Tutor AI Question Generation Types
-// ============================================================================
-
-export type AiGenerateQuestionsRequest = {
-  examName: string;
-  subjectId?: string;
-  subjectName: string;
-  topicTitle?: string;
-  difficulty?: 'easy' | 'medium' | 'hard' | 'mixed';
-  count: number;
-  purpose?: 'lesson_test' | 'mock_exam';
-  instructions?: string;
-};
-
-export type AiGeneratedQuestionDraft = {
-  questionText: string;
-  explanation: string;
-  difficulty: 'easy' | 'medium' | 'hard';
-  points: number;
-  options: Array<{
-    optionKey: string;
-    optionText: string;
-    isCorrect: boolean;
-  }>;
-};
-
-export type AiGenerateQuestionsResponse = {
-  ok: true;
-  questions: AiGeneratedQuestionDraft[];
-};
-

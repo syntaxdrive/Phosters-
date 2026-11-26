@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowDown, ArrowLeft, ArrowUp, BellRing, BookOpenCheck, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, BellRing, BookOpenCheck, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import {
   datetimeLocalToIso,
@@ -10,7 +10,6 @@ import {
 } from '../../lib/releaseQueue';
 import { fetchAdminLessonsList } from '../../services/adminService';
 import { fetchTestForAdminEditor, saveAdminTest } from '../../services/cbtService';
-import { generateAiQuestionsForTutor } from '../../services/mockExamService';
 import { triggerPushNotification } from '../../services/pushService';
 import { fetchApprovedBankQuestionsForTestBuilder } from '../../services/questionBankService';
 import {
@@ -95,14 +94,6 @@ export function AdminTestEditorPage() {
   const [bankCount, setBankCount] = useState(10);
   const [bankLoading, setBankLoading] = useState(false);
   const [bankFeedback, setBankFeedback] = useState<{ tone: 'success' | 'info' | 'error'; message: string } | null>(null);
-
-  // Tutor AI Question Generator state
-  const [aiOpen, setAiOpen] = useState(false);
-  const [aiCount, setAiCount] = useState(10);
-  const [aiDifficulty, setAiDifficulty] = useState<'mixed' | 'easy' | 'medium' | 'hard'>('mixed');
-  const [aiInstructions, setAiInstructions] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiFeedback, setAiFeedback] = useState<{ tone: 'success' | 'info' | 'error'; message: string } | null>(null);
 
   const loadEditor = useCallback(async () => {
     setLoading(true);
@@ -480,86 +471,6 @@ export function AdminTestEditorPage() {
     });
   }
 
-  async function handleGenerateAiQuestions(overrideCount?: number) {
-    const requestedCount = Math.max(1, Math.min(40, overrideCount ?? aiCount));
-    if (overrideCount) setAiCount(overrideCount);
-    setAiFeedback(null);
-
-    const examName = exams.find((e) => e.id === selectedExamId)?.name || 'JAMB UTME';
-    const subjectName = subjects.find((s) => s.id === selectedSubjectId)?.name || '';
-    const topicTitle = topics.find((t) => t.id === topicId)?.title || '';
-    const lessonTitle =
-      attachMode === 'lesson' ? lessons.find((l) => l.id === lessonId)?.title || '' : '';
-
-    if (!subjectName) {
-      setAiFeedback({ tone: 'error', message: 'Select a Subject above before generating AI questions.' });
-      return;
-    }
-
-    setAiLoading(true);
-    const res = await generateAiQuestionsForTutor({
-      examName,
-      subjectId: selectedSubjectId || undefined,
-      subjectName,
-      topicTitle: [topicTitle, lessonTitle].filter(Boolean).join(' — '),
-      difficulty: aiDifficulty,
-      count: requestedCount,
-      purpose: 'lesson_test',
-      instructions: aiInstructions,
-    });
-    setAiLoading(false);
-
-    if (res.error || !res.result) {
-      setAiFeedback({
-        tone: 'error',
-        message: res.error || 'Could not generate AI questions right now.',
-      });
-      return;
-    }
-
-    const existingTexts = new Set(
-      questions.map((q) => q.question_text.trim().toLowerCase()).filter(Boolean)
-    );
-
-    const incomingDrafts: AdminQuestionDraft[] = [];
-    for (const item of res.result.questions) {
-      const normalized = item.questionText.trim().toLowerCase();
-      if (!normalized || existingTexts.has(normalized)) continue;
-      existingTexts.add(normalized);
-
-      incomingDrafts.push({
-        localKey: newKey(),
-        question_text: item.questionText,
-        explanation: item.explanation || '',
-        points: item.points || 1,
-        options: item.options.map((o, idx) => ({
-          localKey: newKey(),
-          option_key: o.optionKey || OPTION_KEYS[idx] || String(idx + 1),
-          option_text: o.optionText,
-          is_correct: o.isCorrect,
-        })),
-      });
-    }
-
-    if (incomingDrafts.length === 0) {
-      setAiFeedback({ tone: 'info', message: 'No new questions were added from the AI response.' });
-      return;
-    }
-
-    setQuestions((prev) => {
-      const isOnlyBlankStarter =
-        prev.length === 1 &&
-        !prev[0].question_text.trim() &&
-        prev[0].options.every((o) => !o.option_text.trim());
-      return isOnlyBlankStarter ? incomingDrafts : [...prev, ...incomingDrafts];
-    });
-
-    setAiFeedback({
-      tone: 'success',
-      message: `Generated ${incomingDrafts.length} ${subjectName} questions with verified keys and explanations. Review below before saving.`,
-    });
-  }
-
   if (loading) return <LoadingState message="Loading test editor..." />;
   if (loadError) return <ErrorState message={loadError} onRetry={() => void loadEditor()} />;
 
@@ -809,14 +720,6 @@ export function AdminTestEditorPage() {
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setAiOpen((v) => !v)}
-              >
-                <Sparkles className="h-4 w-4 text-phosters-600 dark:text-phosters-400" aria-hidden="true" />
-                <span>{aiOpen ? 'Hide AI Setter' : 'Set Questions with AI'}</span>
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
                 onClick={() => setBankOpen((v) => !v)}
               >
                 <BookOpenCheck className="h-4 w-4 text-phosters-600 dark:text-phosters-400" aria-hidden="true" />
@@ -834,110 +737,6 @@ export function AdminTestEditorPage() {
               </Button>
             </div>
           </div>
-
-          {aiOpen && (
-            <Card padding="lg" className="space-y-4 border-phosters-200 dark:border-phosters-800/80">
-              <div className="space-y-1">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                  AI Tutor Assistant — Generate Syllabus Questions
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Creates original {exams.find((e) => e.id === selectedExamId)?.name || 'exam'} questions for{' '}
-                  <strong className="font-semibold text-slate-800 dark:text-slate-200">
-                    {subjects.find((s) => s.id === selectedSubjectId)?.name || 'selected subject'}
-                  </strong>{' '}
-                  with A–D options and student explanations. You can edit any draft before saving.
-                </p>
-              </div>
-
-              {aiFeedback && <Alert tone={aiFeedback.tone}>{aiFeedback.message}</Alert>}
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                    Difficulty mix
-                  </label>
-                  <select
-                    value={aiDifficulty}
-                    onChange={(e) =>
-                      setAiDifficulty(e.target.value as 'mixed' | 'easy' | 'medium' | 'hard')
-                    }
-                    className="w-full min-h-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100"
-                  >
-                    <option value="mixed">Balanced Exam Mix</option>
-                    <option value="easy">Easy (Foundational)</option>
-                    <option value="medium">Medium (Standard UTME)</option>
-                    <option value="hard">Hard (Competitive / UI)</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                    Number of questions (1–40)
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={40}
-                    value={aiCount}
-                    onChange={(e) =>
-                      setAiCount(Math.max(1, Math.min(40, Number(e.target.value) || 10)))
-                    }
-                    className="w-full min-h-[42px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100 tabular-nums"
-                  />
-                </div>
-
-                <div className="space-y-1 sm:col-span-3">
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                    Topic / syllabus instructions (optional)
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={aiInstructions}
-                    onChange={(e) => setAiInstructions(e.target.value)}
-                    placeholder="e.g. Focus on Quadratic Equations, surds, and word problems; include worked numerical solutions."
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  loading={aiLoading}
-                  onClick={() => void handleGenerateAiQuestions(5)}
-                >
-                  +5 Quick Quiz
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  loading={aiLoading}
-                  onClick={() => void handleGenerateAiQuestions(25)}
-                >
-                  +25 UI Post-UTME
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  loading={aiLoading}
-                  onClick={() => void handleGenerateAiQuestions(40)}
-                >
-                  +40 JAMB Subject
-                </Button>
-                <Button
-                  type="button"
-                  variant="primary"
-                  loading={aiLoading}
-                  onClick={() => void handleGenerateAiQuestions()}
-                >
-                  <Sparkles className="h-4 w-4" aria-hidden="true" />
-                  <span>Generate {aiCount} Questions</span>
-                </Button>
-              </div>
-            </Card>
-          )}
 
           {bankOpen && (
             <Card padding="lg" className="space-y-4 border-phosters-200 dark:border-phosters-800/80">
